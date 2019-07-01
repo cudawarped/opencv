@@ -9,6 +9,7 @@ from __future__ import print_function
 
 import numpy as np
 import cv2 as cv
+from os import environ
 
 from tests_common import NewOpenCVTests
 
@@ -101,11 +102,27 @@ class cuda_test(NewOpenCVTests):
         self.assertTrue(True) #It is sufficient that no exceptions have been there
 
     def test_cudacodec_existence(self):
-        #Test at least the existence of wrapped functions for now
+        #Test the existence of video writer and the functionality but not the results of the video reader
+
+        vid_path = environ['OPENCV_TEST_DATA_PATH'] + '/cv/video/768x576.avi'
+        try:
+            reader = cv.cudacodec.createVideoReader(vid_path)
+            ret,gpu_mat = reader.nextFrame()
+            ret,_ = reader.nextFrame(gpu_mat)                
+        except cv.error as e:
+            notSupported = (e.code == cv.Error.StsNotImplemented or e.code == cv.Error.StsUnsupportedFormat or e.code == cv.Error.GPU_API_CALL_ERROR)
+            self.assertTrue(notSupported)
+            if e.code == cv.Error.StsNotImplemented:
+                self.skipTest("NVCUVID is not installed")
+            elif e.code == cv.Error.StsUnsupportedFormat:
+                self.skipTest("GPU hardware video decoder missing or video format not supported")
+            elif e.code == cv.Error.GPU_API_CALL_ERRROR:
+                self.skipTest("GPU hardware video decoder is missing")
+            else:
+                self.skipTest(e.err)
 
         try:
             writer = cv.cudacodec.createVideoWriter("tmp", (128, 128), 30)
-            reader = cv.cudacodec.createVideoReader("tmp")
         except cv.error as e:
             self.assertEqual(e.code, cv.Error.StsNotImplemented)
             self.skipTest("NVCUVENC is not installed")
