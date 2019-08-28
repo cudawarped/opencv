@@ -29,40 +29,19 @@ else()
   cmake_minimum_required(VERSION "${MIN_VER_CMAKE}" FATAL_ERROR)
 endif()
 
-option(ENABLE_PIC "Generate position independent code (necessary for shared libraries)" TRUE)
-set(CMAKE_POSITION_INDEPENDENT_CODE ${ENABLE_PIC})
-
-set(OPENCV_MATHJAX_RELPATH "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0" CACHE STRING "URI to a MathJax installation")
-
-# Following block can break build in case of cross-compiling
-# but CMAKE_CROSSCOMPILING variable will be set only on project(OpenCV) command
-# so we will try to detect cross-compiling by the presence of CMAKE_TOOLCHAIN_FILE
-if(NOT DEFINED CMAKE_INSTALL_PREFIX)
-  if(NOT CMAKE_TOOLCHAIN_FILE)
-    # it _must_ go before project(OpenCV) in order to work
-    if(WIN32)
-      set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "Installation Directory")
-    else()
-      set(CMAKE_INSTALL_PREFIX "/usr/local" CACHE PATH "Installation Directory")
-    endif()
-  else()
-    #Android: set output folder to ${CMAKE_BINARY_DIR}
-    set(LIBRARY_OUTPUT_PATH_ROOT ${CMAKE_BINARY_DIR} CACHE PATH "root for library output, set this to change where android libs are compiled to" )
-    # any cross-compiling
-    set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "Installation Directory")
-  endif()
-endif()
-
+#
+# Configure CMake policies
+#
 if(POLICY CMP0026)
   cmake_policy(SET CMP0026 NEW)
 endif()
 
 if(POLICY CMP0042)
-  cmake_policy(SET CMP0042 NEW)
+  cmake_policy(SET CMP0042 NEW)  # CMake 3.0+ (2.8.12): MacOS "@rpath" in target's install name
 endif()
 
 if(POLICY CMP0046)
-  cmake_policy(SET CMP0046 NEW)
+  cmake_policy(SET CMP0046 NEW)  # warn about non-existed dependencies
 endif()
 
 if(POLICY CMP0051)
@@ -74,17 +53,25 @@ if(POLICY CMP0054)  # CMake 3.1: Only interpret if() arguments as variables or k
 endif()
 
 if(POLICY CMP0056)
-  cmake_policy(SET CMP0056 NEW)
+  cmake_policy(SET CMP0056 NEW)  # try_compile(): link flags
 endif()
 
 if(POLICY CMP0067)
-  cmake_policy(SET CMP0067 NEW)
+  cmake_policy(SET CMP0067 NEW)  # CMake 3.8: try_compile(): honor language standard variables (like C++11)
 endif()
 
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)  # CMake 3.9+: `RPATH` settings on macOS do not affect `install_name`.
 endif()
 
+if(POLICY CMP0075)
+  cmake_policy(SET CMP0075 NEW)  # CMake 3.12+: Include file check macros honor `CMAKE_REQUIRED_LIBRARIES`
+endif()
+
+
+#
+# Configure OpenCV CMake hooks
+#
 include(cmake/OpenCVUtils.cmake)
 ocv_cmake_reset_hooks()
 ocv_check_environment_variables(OPENCV_CMAKE_HOOKS_DIR)
@@ -97,48 +84,45 @@ endif()
 
 ocv_cmake_hook(CMAKE_INIT)
 
-# must go before the project command
+# must go before the project()/enable_language() commands
 ocv_update(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "Configs" FORCE)
 if(DEFINED CMAKE_BUILD_TYPE)
-  set_property( CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${CMAKE_CONFIGURATION_TYPES} )
+  set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "${CMAKE_CONFIGURATION_TYPES}")
+endif()
+
+option(ENABLE_PIC "Generate position independent code (necessary for shared libraries)" TRUE)
+set(CMAKE_POSITION_INDEPENDENT_CODE ${ENABLE_PIC})
+
+ocv_cmake_hook(PRE_CMAKE_BOOTSTRAP)
+
+# Bootstap CMake system: setup CMAKE_SYSTEM_NAME and other vars
+enable_language(CXX C)
+
+ocv_cmake_hook(POST_CMAKE_BOOTSTRAP)
+
+if(NOT OPENCV_SKIP_CMAKE_SYSTEM_FILE)
+  include("cmake/platforms/OpenCV-${CMAKE_SYSTEM_NAME}.cmake" OPTIONAL RESULT_VARIABLE "OPENCV_CMAKE_SYSTEM_FILE")
+  if(NOT OPENCV_CMAKE_SYSTEM_FILE)
+    message(STATUS "OpenCV: system-specific configuration file is not found: '${CMAKE_SYSTEM_NAME}'")
+  endif()
+endif()
+
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)  # https://cmake.org/cmake/help/latest/variable/CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT.html
+  if(NOT CMAKE_TOOLCHAIN_FILE)
+    if(WIN32)
+      set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "Installation Directory" FORCE)
+    else()
+      set(CMAKE_INSTALL_PREFIX "/usr/local" CACHE PATH "Installation Directory" FORCE)
+    endif()
+  else()
+    # any cross-compiling
+    set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "Installation Directory" FORCE)
+  endif()
 endif()
 
 enable_testing()
 
 project(OpenCV CXX C)
-
-if(CMAKE_SYSTEM_NAME MATCHES WindowsPhone OR CMAKE_SYSTEM_NAME MATCHES WindowsStore)
-  set(WINRT TRUE)
-endif()
-
-if(WINRT OR WINCE)
-  add_definitions(-DNO_GETENV)
-endif()
-
-if(WINRT)
-  add_definitions(-DWINRT)
-
-  # Making definitions available to other configurations and
-  # to filter dependency restrictions at compile time.
-  if(CMAKE_SYSTEM_NAME MATCHES WindowsPhone)
-    set(WINRT_PHONE TRUE)
-    add_definitions(-DWINRT_PHONE)
-  elseif(CMAKE_SYSTEM_NAME MATCHES WindowsStore)
-    set(WINRT_STORE TRUE)
-    add_definitions(-DWINRT_STORE)
-  endif()
-
-  if(CMAKE_SYSTEM_VERSION MATCHES 10)
-    set(WINRT_10 TRUE)
-    add_definitions(-DWINRT_10)
-  elseif(CMAKE_SYSTEM_VERSION MATCHES 8.1)
-    set(WINRT_8_1 TRUE)
-    add_definitions(-DWINRT_8_1)
-  elseif(CMAKE_SYSTEM_VERSION MATCHES 8.0)
-    set(WINRT_8_0 TRUE)
-    add_definitions(-DWINRT_8_0)
-  endif()
-endif()
 
 if(MSVC)
   set(CMAKE_USE_RELATIVE_PATHS ON CACHE INTERNAL "" FORCE)
@@ -501,6 +485,7 @@ if(ENABLE_IMPL_COLLECTION)
   add_definitions(-DCV_COLLECT_IMPL_DATA)
 endif()
 
+set(OPENCV_MATHJAX_RELPATH "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0" CACHE STRING "URI to a MathJax installation")
 
 # ----------------------------------------------------------------------------
 #  Get actual OpenCV version number from sources
@@ -647,12 +632,12 @@ endif()
 
 if(WIN32)
   # Postfix of DLLs:
-  set(OPENCV_DLLVERSION "${OPENCV_VERSION_MAJOR}${OPENCV_VERSION_MINOR}${OPENCV_VERSION_PATCH}")
-  set(OPENCV_DEBUG_POSTFIX d)
+  ocv_update(OPENCV_DLLVERSION "${OPENCV_VERSION_MAJOR}${OPENCV_VERSION_MINOR}${OPENCV_VERSION_PATCH}")
+  ocv_update(OPENCV_DEBUG_POSTFIX d)
 else()
   # Postfix of so's:
-  set(OPENCV_DLLVERSION "")
-  set(OPENCV_DEBUG_POSTFIX "")
+  ocv_update(OPENCV_DLLVERSION "")
+  ocv_update(OPENCV_DEBUG_POSTFIX "")
 endif()
 
 if(DEFINED CMAKE_DEBUG_POSTFIX)
@@ -1521,19 +1506,22 @@ endif()
 
 if(WITH_INF_ENGINE OR INF_ENGINE_TARGET)
   if(INF_ENGINE_TARGET)
+    list(GET INF_ENGINE_TARGET 0 ie_target)
     set(__msg "YES (${INF_ENGINE_RELEASE} / ${INF_ENGINE_VERSION})")
-    get_target_property(_lib ${INF_ENGINE_TARGET} IMPORTED_LOCATION)
-    get_target_property(_lib_imp_rel ${INF_ENGINE_TARGET} IMPORTED_IMPLIB_RELEASE)
-    get_target_property(_lib_imp_dbg ${INF_ENGINE_TARGET} IMPORTED_IMPLIB_DEBUG)
-    get_target_property(_lib_rel ${INF_ENGINE_TARGET} IMPORTED_LOCATION_RELEASE)
-    get_target_property(_lib_dbg ${INF_ENGINE_TARGET} IMPORTED_LOCATION_DEBUG)
+    get_target_property(_lib ${ie_target} IMPORTED_LOCATION)
+    get_target_property(_lib_imp_rel ${ie_target} IMPORTED_IMPLIB_RELEASE)
+    get_target_property(_lib_imp_dbg ${ie_target} IMPORTED_IMPLIB_DEBUG)
+    get_target_property(_lib_rel ${ie_target} IMPORTED_LOCATION_RELEASE)
+    get_target_property(_lib_dbg ${ie_target} IMPORTED_LOCATION_DEBUG)
     ocv_build_features_string(_lib
       IF _lib THEN "${_lib}"
       IF _lib_imp_rel AND _lib_imp_dbg THEN "${_lib_imp_rel} / ${_lib_imp_dbg}"
       IF _lib_rel AND _lib_dbg THEN "${_lib_rel} / ${_lib_dbg}"
+      IF _lib_rel  THEN "${_lib_rel}"
+      IF _lib_dbg  THEN "${_lib_dbg}"
       ELSE "unknown"
     )
-    get_target_property(_inc ${INF_ENGINE_TARGET} INTERFACE_INCLUDE_DIRECTORIES)
+    get_target_property(_inc ${ie_target} INTERFACE_INCLUDE_DIRECTORIES)
     status("    Inference Engine:" "${__msg}")
     status("                libs:" "${_lib}")
     status("            includes:" "${_inc}")
