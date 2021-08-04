@@ -9,11 +9,46 @@ if(NOT HAVE_FFMPEG AND OPENCV_FFMPEG_USE_FIND_PACKAGE)
   endif()
 endif()
 
+if(FFMPEG_ROOT_DIR AND WIN32 AND NOT ARM)
+  find_path(AVCODEC_INCLUDE_DIR libavcodec/avcodec.h PATHS ${FFMPEG_ROOT_DIR}/include/)
+  find_library(AVCODEC_LIBRARY lib/avcodec.lib PATHS ${FFMPEG_ROOT_DIR})
+  set(FFMPEG_INCLUDE_DIRS ${AVCODEC_INCLUDE_DIR})
+  set(FFMPEG_LIBRARIES ${AVCODEC_LIBRARY})
+
+  find_path(AVFORMAT_INCLUDE_DIR libavformat/avformat.h PATHS ${FFMPEG_ROOT_DIR}/include/)
+  find_library(AVFORMAT_LIBRARY lib/avformat.lib PATHS ${FFMPEG_ROOT_DIR})
+  list(APPEND FFMPEG_INCLUDE_DIRS ${AVFORMAT_INCLUDE_DIR})
+  list(APPEND FFMPEG_LIBRARIES ${AVFORMAT_LIBRARY})
+
+  find_path(AVUTIL_INCLUDE_DIR libavutil/avutil.h PATHS ${FFMPEG_ROOT_DIR}/include/)
+  find_library(AVUTIL_LIBRARY lib/avutil.lib PATHS ${FFMPEG_ROOT_DIR})
+  list(APPEND FFMPEG_INCLUDE_DIRS ${AVUTIL_INCLUDE_DIR})
+  list(APPEND FFMPEG_LIBRARIES ${AVUTIL_LIBRARY})
+
+  find_path(AVDEVICE_INCLUDE_DIR libavdevice/avdevice.h PATHS ${FFMPEG_ROOT_DIR}/include/)
+  find_library(AVDEVICE_LIBRARY lib/avdevice.lib PATHS ${FFMPEG_ROOT_DIR})
+  list(APPEND FFMPEG_INCLUDE_DIRS ${AVDEVICE_INCLUDE_DIR})
+  list(APPEND FFMPEG_LIBRARIES ${AVDEVICE_LIBRARY})
+
+  find_path(SWSCALE_INCLUDE_DIR libswscale/swscale.h PATHS ${FFMPEG_ROOT_DIR}/include/)
+  find_library(SWSCALE_LIBRARY lib/swscale.lib PATHS ${FFMPEG_ROOT_DIR})
+  list(APPEND FFMPEG_INCLUDE_DIRS ${SWSCALE_INCLUDE_DIR})
+  list(APPEND FFMPEG_LIBRARIES ${SWSCALE_LIBRARY})
+
+  set(HAVE_FFMPEG TRUE)
+  #set(HAVE_FFMPEG_WRAPPER FALSE)
+endif()
+
 if(NOT HAVE_FFMPEG AND WIN32 AND NOT ARM AND NOT OPENCV_FFMPEG_SKIP_DOWNLOAD)
   include("${OpenCV_SOURCE_DIR}/3rdparty/ffmpeg/ffmpeg.cmake")
   download_win_ffmpeg(FFMPEG_CMAKE_SCRIPT)
   if(FFMPEG_CMAKE_SCRIPT)
     include("${FFMPEG_CMAKE_SCRIPT}")
+    set(FFMPEG_libavcodec_VERSION ${FFMPEG_libavcodec_VERSION} PARENT_SCOPE) # info
+    set(FFMPEG_libavformat_VERSION ${FFMPEG_libavformat_VERSION} PARENT_SCOPE) # info
+    set(FFMPEG_libavutil_VERSION ${FFMPEG_libavutil_VERSION} PARENT_SCOPE) # info
+    set(FFMPEG_libswscale_VERSION ${FFMPEG_libswscale_VERSION} PARENT_SCOPE) # info
+    set(FFMPEG_libavresample_VERSION ${FFMPEG_libavresample_VERSION} PARENT_SCOPE) # info
     set(HAVE_FFMPEG TRUE)
     set(HAVE_FFMPEG_WRAPPER TRUE)
   endif()
@@ -45,29 +80,29 @@ endif()
 
 #=================================
 # Versions check.
-if(HAVE_FFMPEG AND NOT HAVE_FFMPEG_WRAPPER)
-  set(_min_libavcodec_version 54.35.0)
-  set(_min_libavformat_version 54.20.4)
-  set(_min_libavutil_version 52.3.0)
-  set(_min_libswscale_version 2.1.1)
-  set(_min_libavresample_version 1.0.1)
-  foreach(ffmpeg_lib ${_used_ffmpeg_libraries})
-    if(FFMPEG_${ffmpeg_lib}_VERSION VERSION_LESS _min_${ffmpeg_lib}_version)
-      message(STATUS "FFMPEG is disabled. Can't find suitable ${ffmpeg_lib} library"
-              " (minimal ${_min_${ffmpeg_lib}_version}, found ${FFMPEG_${ffmpeg_lib}_VERSION}).")
-      set(HAVE_FFMPEG FALSE)
-    endif()
-  endforeach()
-  if(NOT HAVE_FFMPEG)
-    message(STATUS "FFMPEG libraries version check failed "
-            "(minimal libav release 9.20, minimal FFMPEG release 1.1.16).")
-  endif()
-  unset(_min_libavcodec_version)
-  unset(_min_libavformat_version)
-  unset(_min_libavutil_version)
-  unset(_min_libswscale_version)
-  unset(_min_libavresample_version)
-endif()
+# if(HAVE_FFMPEG AND NOT HAVE_FFMPEG_WRAPPER)
+  # set(_min_libavcodec_version 54.35.0)
+  # set(_min_libavformat_version 54.20.4)
+  # set(_min_libavutil_version 52.3.0)
+  # set(_min_libswscale_version 2.1.1)
+  # set(_min_libavresample_version 1.0.1)
+  # foreach(ffmpeg_lib ${_used_ffmpeg_libraries})
+    # if(FFMPEG_${ffmpeg_lib}_VERSION VERSION_LESS _min_${ffmpeg_lib}_version)
+      # message(STATUS "FFMPEG is disabled. Can't find suitable ${ffmpeg_lib} library"
+              # " (minimal ${_min_${ffmpeg_lib}_version}, found ${FFMPEG_${ffmpeg_lib}_VERSION}).")
+      # set(HAVE_FFMPEG FALSE)
+    # endif()
+  # endforeach()
+  # if(NOT HAVE_FFMPEG)
+    # message(STATUS "FFMPEG libraries version check failed "
+            # "(minimal libav release 9.20, minimal FFMPEG release 1.1.16).")
+  # endif()
+  # unset(_min_libavcodec_version)
+  # unset(_min_libavformat_version)
+  # unset(_min_libavutil_version)
+  # unset(_min_libswscale_version)
+  # unset(_min_libavresample_version)
+# endif()
 
 #==================================
 
@@ -127,3 +162,5 @@ elseif(HAVE_FFMPEG)
     ocv_add_external_target(ffmpeg.plugin_deps "${__plugin_include_dirs}" "${__plugin_include_libs}" "${__plugin_defines}")
   endif()
 endif()
+
+set(HAVE_FFMPEG ${HAVE_FFMPEG} PARENT_SCOPE)
