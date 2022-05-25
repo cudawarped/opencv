@@ -41,7 +41,7 @@ if(OpenCV_USE_NVCUVID)
 endif()
 
 if(WIN32)
-  list(APPEND OpenCV_CUDA_LIBS_ABSPATH ${CUDA_nvcuvenc_LIBRARIES})
+  list(APPEND OpenCV_CUDA_LIBS_ABSPATH ${CUDA_nvencodeapi_LIBRARIES})
 endif()
 
 set(OpenCV_CUDA_LIBS_RELPATH "")
