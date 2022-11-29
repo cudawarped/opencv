@@ -74,6 +74,10 @@ if(POLICY CMP0077)
   cmake_policy(SET CMP0077 NEW)  # CMake 3.13+: option() honors normal variables.
 endif()
 
+if(POLICY CMP0091)
+  cmake_policy(SET CMP0091 NEW) # CMake 3.15+: leave MSVC runtime selection out of default CMAKE_<LANG>_FLAGS_<CONFIG> flags
+endif()
+
 if(POLICY CMP0146)
   cmake_policy(SET CMP0146 OLD)  # CMake 3.27+: use CMake FindCUDA if available.
 endif()
@@ -549,6 +553,9 @@ OCV_OPTION(OPENCV_ENABLE_MEMALIGN     "Enable posix_memalign or memalign usage" 
 OCV_OPTION(OPENCV_DISABLE_FILESYSTEM_SUPPORT "Disable filesystem support" OFF)
 OCV_OPTION(OPENCV_DISABLE_THREAD_SUPPORT "Build the library without multi-threaded code." OFF)
 OCV_OPTION(OPENCV_SEMIHOSTING         "Build the library for semihosting target (Arm). See https://developer.arm.com/documentation/100863/latest." OFF)
+OCV_OPTION(ENABLE_CUDA_FIRST_CLASS_LANGUAGE "Enable CUDA as a first class language, if enabled dependant projects will need to use CMake >= 3.18" (WITH_CUDA AND NOT CMAKE_VERSION VERSION_LESS 3.18)
+  VISIBLE_IF (WITH_CUDA AND NOT CMAKE_VERSION VERSION_LESS 3.18)
+  VERIFY HAVE_CUDA)
 
 OCV_OPTION(ENABLE_PYLINT              "Add target with Pylint checks"                            (BUILD_DOCS OR BUILD_EXAMPLES) IF (NOT CMAKE_CROSSCOMPILING AND NOT APPLE_FRAMEWORK) )
 OCV_OPTION(ENABLE_FLAKE8              "Add target with Python flake8 checker"                    (BUILD_DOCS OR BUILD_EXAMPLES) IF (NOT CMAKE_CROSSCOMPILING AND NOT APPLE_FRAMEWORK) )
@@ -656,6 +663,30 @@ endif()
 include(cmake/OpenCVCompilerOptions.cmake)
 
 ocv_cmake_hook(POST_COMPILER_OPTIONS)
+
+# --- CUDA Support ---
+if(ENABLE_CUDA_FIRST_CLASS_LANGUAGE)
+  if(CMAKE_VERSION VERSION_LESS 3.18)
+    message(WARNING "CUDA first class language only supported for CMake versions >= 3.18, falling back to FindCUDA!")
+    set(ENABLE_CUDA_FIRST_CLASS_LANGUAGE OFF CACHE BOOL "Enable CUDA as a first class language, if enabled dependant projects will need to use CMake >= 3.18" FORCE)
+  else()
+    if(UNIX AND CUDA_PATH AND NOT $ENV{CUDA_PATH})
+      set(ENV{CUDA_PATH} ${CUDA_PATH})
+    elseif(WIN32 AND CUDA_PATH)
+      set(ENV{PATH} "${CUDA_PATH}\\bin\;$ENV{PATH}")
+    endif()
+    include(CheckLanguage)
+    check_language(CUDA)
+    # Checking windows default search location isn't possible because the CUDA Toolkit is installed to C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/vXX.X
+    if(UNIX AND NOT CMAKE_CUDA_COMPILER)
+      message(STATUS "Checking for CUDA compiler in default location (/usr/local/cuda)")
+      set(CUDA_PATH "/usr/local/cuda" CACHE INTERNAL "")
+      set(ENV{CUDA_PATH} ${CUDA_PATH})
+    endif()
+    cmake_policy(SET CMP0092 NEW) # CMake 3.15+: leave warning flags out of default CMAKE_<LANG>_FLAGS flags.
+    enable_language(CUDA)
+  endif()
+endif()
 
 # ----------------------------------------------------------------------------
 #       CHECK FOR SYSTEM LIBRARIES, OPTIONS, ETC..
