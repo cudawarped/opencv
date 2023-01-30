@@ -345,23 +345,44 @@ namespace cvtest
              return AssertionFailure() << msg.str();
         }
 
-        Mat diff;
-        absdiff(m1.reshape(1), m2.reshape(1), diff);
-
-        double maxVal = 0.0;
-        Point maxLoc;
-        minMaxLocGold(diff, 0, &maxVal, 0, &maxLoc);
-
-        if (maxVal > eps)
+        // how to know what the source type is?
+        //if (m1.type() == CV_16F) {
+        //    double norm = cv::norm(m1, m2, NORM_INF);
+        //    if (norm > 0)
+        //    {
+        //        /*
+        //        std::stringstream msg;
+        //        msg << "The max difference between matrices \"" << expr1 << "\" and \"" << expr2
+        //            << "\" is " << maxVal << " at (" << maxLoc.y << ", " << maxLoc.x / m1.channels() << ")"
+        //            << ", which exceeds \"" << eps_expr << "\", where \""
+        //            << expr1 << "\" at (" << maxLoc.y << ", " << maxLoc.x / m1.channels() << ") evaluates to " << printMatVal(m1, maxLoc) << ", \""
+        //            << expr2 << "\" at (" << maxLoc.y << ", "8/ << maxLoc.x / m1.channels() << ") evaluates to " << printMatVal(m2, maxLoc) << ", \""
+        //            << eps_expr << "\" evaluates to " << eps;
+        //            */
+        //        return AssertionFailure();// << msg.str();
+        //    }
+        //}
+        //else
         {
-            std::stringstream msg;
-            msg << "The max difference between matrices \"" << expr1 << "\" and \"" << expr2
-                << "\" is " << maxVal << " at (" << maxLoc.y << ", " << maxLoc.x / m1.channels() << ")"
-                << ", which exceeds \"" << eps_expr << "\", where \""
-                << expr1 << "\" at (" << maxLoc.y << ", " << maxLoc.x / m1.channels() << ") evaluates to " << printMatVal(m1, maxLoc) << ", \""
-                << expr2 << "\" at (" << maxLoc.y << ", " << maxLoc.x / m1.channels() << ") evaluates to " << printMatVal(m2, maxLoc) << ", \""
-                << eps_expr << "\" evaluates to " << eps;
-            return AssertionFailure() << msg.str();
+
+            Mat diff;
+            absdiff(m1.reshape(1), m2.reshape(1), diff);
+
+            double maxVal = 0.0;
+            Point maxLoc;
+            minMaxLocGold(diff, 0, &maxVal, 0, &maxLoc);
+
+            if (maxVal > eps)
+            {
+                std::stringstream msg;
+                msg << "The max difference between matrices \"" << expr1 << "\" and \"" << expr2
+                    << "\" is " << maxVal << " at (" << maxLoc.y << ", " << maxLoc.x / m1.channels() << ")"
+                    << ", which exceeds \"" << eps_expr << "\", where \""
+                    << expr1 << "\" at (" << maxLoc.y << ", " << maxLoc.x / m1.channels() << ") evaluates to " << printMatVal(m1, maxLoc) << ", \""
+                    << expr2 << "\" at (" << maxLoc.y << ", " << maxLoc.x / m1.channels() << ") evaluates to " << printMatVal(m2, maxLoc) << ", \""
+                    << eps_expr << "\" evaluates to " << eps;
+                return AssertionFailure() << msg.str();
+            }
         }
 
         return AssertionSuccess();

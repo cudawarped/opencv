@@ -508,16 +508,123 @@ namespace
         gridTransformUnary_< ConvertToPolicy<scalar_type> >(globPtr<T>(src), globPtr<D>(dst), op, stream);
     }
 
-    template <typename T, typename D>
-    void convertScaleHalf(const GpuMat& src, const GpuMat& dst, Stream& stream)
+    struct ConvertorFp16ToFp16 : unary_function<short, short>
     {
-        typedef typename VecTraits<T>::elem_type src_elem_type;
-        typedef typename VecTraits<D>::elem_type dst_elem_type;
-        typedef typename LargerType<src_elem_type, float>::type larger_elem_type;
-        typedef typename LargerType<float, dst_elem_type>::type scalar_type;
+        float alpha, beta;
+        __device__ __forceinline__ short operator ()(typename TypeTraits<short>::parameter_type src) const
+        {
+            return cudev::cast_to_fp16<float>(alpha * cudev::cast_from_fp16<float>(src) + beta);
+        }
+    };
 
-        gridTransformUnary_< ConvertToPolicy<scalar_type> >(globPtr<T>(src), globPtr<D>(dst), saturate_cast_fp16_func<T,D>(), stream);
+    void convertToScaleHalfToHalf(const GpuMat& src, const GpuMat& dst, double alpha, double beta, Stream& stream)
+    {
+        ConvertorFp16ToFp16 op;
+        op.alpha = cv::saturate_cast<float>(alpha);
+        op.beta = cv::saturate_cast<float>(beta);
+        gridTransformUnary_< ConvertToPolicy<float> >(globPtr<short>(src), globPtr<short>(dst), op, stream);
     }
+
+    template <typename T, typename S> struct ConvertorFromFp16 : unary_function<short, T>
+    {
+        S alpha, beta;
+        __device__ __forceinline__ T operator ()(short src) const
+        {
+            return cudev::saturate_cast<T>(alpha * cudev::cast_from_fp16<S>(src) + beta);
+        }
+    };
+
+
+
+    // three cases of short short
+    // fp16 -> short
+    // short -> fp16
+    // fp16 to fp16 - only applicable with convert scale
+
+    // No scale approach is
+    // cast_from_fp16 unless second arg is short then cast_to_fp16
+    // with extra fp16_to_short function.
+    // alternative
+    // cast_from
+    // cast_to
+    // probably don't need functors then
+
+    // Scale approach is
+    // convertToScaleFromHalf
+    // convertToScaleToHalf
+    // where fp16tofp16 with separate funciton because the return type needs to be saturated to fp16
+
+    // extra template arg 16 to indicate
+
+    template <typename T>
+    void convertToScaleFromHalf(const GpuMat& src, const GpuMat& dst, double alpha, double beta, Stream& stream)
+    {
+        //typedef typename VecTraits<T>::elem_type dst_elem_type;
+        typedef typename LargerType<float, T>::type scalar_type;
+
+        ConvertorFromFp16<T, scalar_type> op;
+        op.alpha = cv::saturate_cast<scalar_type>(alpha);
+        op.beta = cv::saturate_cast<scalar_type>(beta);
+
+        gridTransformUnary_< ConvertToPolicy<scalar_type> >(globPtr<short>(src), globPtr<T>(dst), op, stream);
+    }
+
+    template <typename T, typename S> struct ConvertorToFp16 : unary_function<T, short>
+    {
+        S alpha, beta;
+        __device__ __forceinline__ short operator ()(typename TypeTraits<T>::parameter_type src) const
+        {
+            return cudev::cast_to_fp16<T>(alpha * src + beta);
+        }
+    };
+
+    template <typename T>
+    void convertToScaleToHalf(const GpuMat& src, const GpuMat& dst, double alpha, double beta, Stream& stream)
+    {
+        //typedef typename VecTraits<short>::elem_type dst_elem_type;
+        //typedef typename LargerType<float, short>::type scalar_type;
+
+        ConvertorToFp16<T, float> op;
+        op.alpha = cv::saturate_cast<float>(alpha);
+        op.beta = cv::saturate_cast<float>(beta);
+
+        gridTransformUnary_< ConvertToPolicy<float> >(globPtr<T>(src), globPtr<short>(dst), op, stream);
+    }
+
+
+    template <typename T>
+    void convertToNoScaleToHalf(const GpuMat& src, const GpuMat& dst, Stream& stream)
+    {
+        //typedef typename VecTraits<short>::elem_type dst_elem_type;
+        //typedef typename LargerType<float, short>::type scalar_type;
+        gridTransformUnary_< ConvertToPolicy<float> >(globPtr<T>(src), globPtr<short>(dst), saturate_cast_to_fp16_func<T>(), stream);
+    }
+
+    template <typename T>
+    void convertToNoScaleFromHalf(const GpuMat& src, const GpuMat& dst, Stream& stream)
+    {
+        //typedef typename VecTraits<T>::elem_type dst_elem_type;
+        typedef typename LargerType<float, T>::type scalar_type;
+        gridTransformUnary_< ConvertToPolicy<scalar_type> >(globPtr<short>(src), globPtr<T>(dst), saturate_cast_from_fp16_func<T>(), stream);
+    }
+
+
+    //template <typename T, typename D>
+    //void convertToNoScaleHalf(const GpuMat& src, const GpuMat& dst, Stream& stream)
+    //{
+    //    typedef typename VecTraits<T>::elem_type src_elem_type;
+    //    typedef typename VecTraits<D>::elem_type dst_elem_type;
+    //    typedef typename LargerType<float, dst_elem_type>::type scalar_type;
+    //    gridTransformUnary_< ConvertToPolicy<scalar_type> >(globPtr<T>(src), globPtr<D>(dst), saturate_cast_fp16_func<T,D>(), stream);
+    //}
+
+    //void convertFp16ToShort(const GpuMat& src, const GpuMat& dst, Stream& stream)
+    //{
+    //    typedef typename VecTraits<short>::elem_type src_elem_type;
+    //    typedef typename VecTraits<short>::elem_type dst_elem_type;
+    //    typedef typename LargerType<float, dst_elem_type>::type scalar_type;
+    //    gridTransformUnary_< ConvertToPolicy<scalar_type> >(globPtr<short>(src), globPtr<short>(dst), saturate_cast_fp16_to_short_func(), stream);
+    //}
 }
 
 void cv::cuda::GpuMat::convertTo(OutputArray _dst, int rtype, Stream& stream) const
@@ -539,7 +646,7 @@ void cv::cuda::GpuMat::convertTo(OutputArray _dst, int rtype, Stream& stream) co
         return;
     }
 
-    CV_DbgAssert( sdepth <= CV_64F && ddepth <= CV_64F );
+    CV_DbgAssert( sdepth <= CV_16F && ddepth <= CV_16F );
 
     GpuMat src = *this;
 
@@ -547,15 +654,16 @@ void cv::cuda::GpuMat::convertTo(OutputArray _dst, int rtype, Stream& stream) co
     GpuMat dst = _dst.getGpuMat();
 
     typedef void (*func_t)(const GpuMat& src, const GpuMat& dst, Stream& stream);
-    static const func_t funcs[7][7] =
+    static const func_t funcs[8][8] =
     {
-        {0, convertToNoScale<uchar, schar>, convertToNoScale<uchar, ushort>, convertToNoScale<uchar, short>, convertToNoScale<uchar, int>, convertToNoScale<uchar, float>, convertToNoScale<uchar, double>},
-        {convertToNoScale<schar, uchar>, 0, convertToNoScale<schar, ushort>, convertToNoScale<schar, short>, convertToNoScale<schar, int>, convertToNoScale<schar, float>, convertToNoScale<schar, double>},
-        {convertToNoScale<ushort, uchar>, convertToNoScale<ushort, schar>, 0, convertToNoScale<ushort, short>, convertToNoScale<ushort, int>, convertToNoScale<ushort, float>, convertToNoScale<ushort, double>},
-        {convertToNoScale<short, uchar>, convertToNoScale<short, schar>, convertToNoScale<short, ushort>, 0, convertToNoScale<short, int>, convertToNoScale<short, float>, convertToNoScale<short, double>},
-        {convertToNoScale<int, uchar>, convertToNoScale<int, schar>, convertToNoScale<int, ushort>, convertToNoScale<int, short>, 0, convertToNoScale<int, float>, convertToNoScale<int, double>},
-        {convertToNoScale<float, uchar>, convertToNoScale<float, schar>, convertToNoScale<float, ushort>, convertToNoScale<float, short>, convertToNoScale<float, int>, 0, convertToNoScale<float, double>},
-        {convertToNoScale<double, uchar>, convertToNoScale<double, schar>, convertToNoScale<double, ushort>, convertToNoScale<double, short>, convertToNoScale<double, int>, convertToNoScale<double, float>, 0}
+        {0, convertToNoScale<uchar, schar>, convertToNoScale<uchar, ushort>, convertToNoScale<uchar, short>, convertToNoScale<uchar, int>, convertToNoScale<uchar, float>, convertToNoScale<uchar, double>, convertToNoScaleToHalf<uchar>},
+        {convertToNoScale<schar, uchar>, 0, convertToNoScale<schar, ushort>, convertToNoScale<schar, short>, convertToNoScale<schar, int>, convertToNoScale<schar, float>, convertToNoScale<schar, double>, convertToNoScaleToHalf<schar>},
+        {convertToNoScale<ushort, uchar>, convertToNoScale<ushort, schar>, 0, convertToNoScale<ushort, short>, convertToNoScale<ushort, int>, convertToNoScale<ushort, float>, convertToNoScale<ushort, double>, convertToNoScaleToHalf<ushort>},
+        {convertToNoScale<short, uchar>, convertToNoScale<short, schar>, convertToNoScale<short, ushort>, 0, convertToNoScale<short, int>, convertToNoScale<short, float>, convertToNoScale<short, double>, convertToNoScaleToHalf<short>},
+        {convertToNoScale<int, uchar>, convertToNoScale<int, schar>, convertToNoScale<int, ushort>, convertToNoScale<int, short>, 0, convertToNoScale<int, float>, convertToNoScale<int, double>, convertToNoScaleToHalf<int>},
+        {convertToNoScale<float, uchar>, convertToNoScale<float, schar>, convertToNoScale<float, ushort>, convertToNoScale<float, short>, convertToNoScale<float, int>, 0, convertToNoScale<float, double>, convertToNoScaleToHalf<float>},
+        {convertToNoScale<double, uchar>, convertToNoScale<double, schar>, convertToNoScale<double, ushort>, convertToNoScale<double, short>, convertToNoScale<double, int>, convertToNoScale<double, float>, 0, convertToNoScaleToHalf<double>},
+        {convertToNoScaleFromHalf<uchar>, convertToNoScaleFromHalf<schar>, convertToNoScaleFromHalf<ushort>, convertToNoScaleFromHalf<short>, convertToNoScaleFromHalf<int>, convertToNoScaleFromHalf<float>, convertToNoScaleFromHalf<double>, 0}
     };
 
     funcs[sdepth][ddepth](src.reshape(1), dst.reshape(1), stream);
@@ -577,15 +685,16 @@ void cv::cuda::GpuMat::convertTo(OutputArray _dst, int rtype, double alpha, doub
     GpuMat dst = _dst.getGpuMat();
 
     typedef void (*func_t)(const GpuMat& src, const GpuMat& dst, double alpha, double beta, Stream& stream);
-    static const func_t funcs[7][7] =
+    static const func_t funcs[8][8] =
     {
-        {convertToScale<uchar, uchar>, convertToScale<uchar, schar>, convertToScale<uchar, ushort>, convertToScale<uchar, short>, convertToScale<uchar, int>, convertToScale<uchar, float>, convertToScale<uchar, double>},
-        {convertToScale<schar, uchar>, convertToScale<schar, schar>, convertToScale<schar, ushort>, convertToScale<schar, short>, convertToScale<schar, int>, convertToScale<schar, float>, convertToScale<schar, double>},
-        {convertToScale<ushort, uchar>, convertToScale<ushort, schar>, convertToScale<ushort, ushort>, convertToScale<ushort, short>, convertToScale<ushort, int>, convertToScale<ushort, float>, convertToScale<ushort, double>},
-        {convertToScale<short, uchar>, convertToScale<short, schar>, convertToScale<short, ushort>, convertToScale<short, short>, convertToScale<short, int>, convertToScale<short, float>, convertToScale<short, double>},
-        {convertToScale<int, uchar>, convertToScale<int, schar>, convertToScale<int, ushort>, convertToScale<int, short>, convertToScale<int, int>, convertToScale<int, float>, convertToScale<int, double>},
-        {convertToScale<float, uchar>, convertToScale<float, schar>, convertToScale<float, ushort>, convertToScale<float, short>, convertToScale<float, int>, convertToScale<float, float>, convertToScale<float, double>},
-        {convertToScale<double, uchar>, convertToScale<double, schar>, convertToScale<double, ushort>, convertToScale<double, short>, convertToScale<double, int>, convertToScale<double, float>, convertToScale<double, double>}
+        {convertToScale<uchar, uchar>, convertToScale<uchar, schar>, convertToScale<uchar, ushort>, convertToScale<uchar, short>, convertToScale<uchar, int>, convertToScale<uchar, float>, convertToScale<uchar, double>, convertToScaleToHalf<uchar>},
+        {convertToScale<schar, uchar>, convertToScale<schar, schar>, convertToScale<schar, ushort>, convertToScale<schar, short>, convertToScale<schar, int>, convertToScale<schar, float>, convertToScale<schar, double>, convertToScaleToHalf<schar>},
+        {convertToScale<ushort, uchar>, convertToScale<ushort, schar>, convertToScale<ushort, ushort>, convertToScale<ushort, short>, convertToScale<ushort, int>, convertToScale<ushort, float>, convertToScale<ushort, double>, convertToScaleToHalf<ushort>},
+        {convertToScale<short, uchar>, convertToScale<short, schar>, convertToScale<short, ushort>, convertToScale<short, short>, convertToScale<short, int>, convertToScale<short, float>, convertToScale<short, double>, convertToScaleToHalf<short>},
+        {convertToScale<int, uchar>, convertToScale<int, schar>, convertToScale<int, ushort>, convertToScale<int, short>, convertToScale<int, int>, convertToScale<int, float>, convertToScale<int, double>, convertToScaleToHalf<int>},
+        {convertToScale<float, uchar>, convertToScale<float, schar>, convertToScale<float, ushort>, convertToScale<float, short>, convertToScale<float, int>, convertToScale<float, float>, convertToScale<float, double>, convertToScaleToHalf<float>},
+        {convertToScale<double, uchar>, convertToScale<double, schar>, convertToScale<double, ushort>, convertToScale<double, short>, convertToScale<double, int>, convertToScale<double, float>, convertToScale<double, double>, convertToScaleToHalf<double>},
+        {convertToScaleFromHalf<uchar>,convertToScaleFromHalf<schar>,convertToScaleFromHalf<ushort>, convertToScaleFromHalf<short>,convertToScaleFromHalf<int>,convertToScaleFromHalf<float>,convertToScaleFromHalf<double>, convertToScaleHalfToHalf}
     };
 
     funcs[sdepth][ddepth](src.reshape(1), dst.reshape(1), alpha, beta, stream);
@@ -616,7 +725,7 @@ void cv::cuda::convertFp16(InputArray _src, OutputArray _dst, Stream& stream)
     static const func_t funcs[] =
     {
         0, 0, 0,
-        convertScaleHalf<float, short>, 0, convertScaleHalf<short, float>,
+        convertToNoScaleToHalf<float>, 0, convertToNoScaleFromHalf<float>,
         0, 0,
     };
 
