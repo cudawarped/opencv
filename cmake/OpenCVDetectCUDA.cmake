@@ -431,6 +431,10 @@ if(CUDA_FOUND)
       set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -Xcudafe --display_error_number --diag-suppress 1394,1388)
     endif()
 
+    if(CMAKE_GENERATOR MATCHES "Visual Studio" AND "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_RELEASE} ${CMAKE_CXX_FLAGS_DEBUG} ${CUDA_NVCC_FLAGS}" MATCHES "Zi")
+      set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -Xcompiler -FS)
+    endif()
+
     if(CMAKE_CROSSCOMPILING AND (ARM OR AARCH64))
       set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -Xlinker --unresolved-symbols=ignore-in-shared-libs)
     endif()
