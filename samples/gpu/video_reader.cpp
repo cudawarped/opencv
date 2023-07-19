@@ -271,7 +271,8 @@ int main(int argc, const char* argv[])
     }
 
     std::ofstream file;
-    size_t rawIdxBase = 0;
+    //size_t rawIdxBase = 0;
+    double rawIdxBase = 0;
     if (!output.empty()) {
         if (!reader->get(VideoReaderProps::PROP_RAW_PACKAGES_BASE_INDEX, rawIdxBase)) {
             cout << "Failed to get the starting index for raw video packets." << endl;
@@ -401,7 +402,8 @@ int main(int argc, const char* argv[])
         }
 
         if (file.is_open()) {
-            size_t N = 0;
+            //size_t N = 0;
+            double N = 0;
             if (!reader->get(VideoReaderProps::PROP_NUMBER_OF_RAW_PACKAGES_SINCE_LAST_GRAB, N)) {
                 cout << "Failed to get the number of raw packets." << endl;
                 return -1;
