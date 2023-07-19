@@ -21,7 +21,7 @@ using namespace std;
 using namespace cv;
 using namespace cv::cudacodec;
 
-string GetVideoCodecString(cudacodec::Codec codec) {
+string GetCodecString(cudacodec::Codec codec) {
     switch (codec) {
     case cudacodec::MPEG1:return "MPEG-1";
     case cudacodec::MPEG2: return "MPEG-2";
@@ -45,92 +45,26 @@ string GetVideoCodecString(cudacodec::Codec codec) {
     }
 }
 
-// need a map
-//static const char* GetVideoCodecString(cudaVideoCodec eCodec) {
-//    unordered_map<Codec, String> codec2String = {
-//        {Codec::MPEG1, "MPEG-1"},
-//                MPEG2,
-//        MPEG4,
-//        VC1,
-//        H264,
-//        JPEG,
-//        H264_SVC,
-//        H264_MVC,
-//        HEVC,
-//        VP8,
-//        VP9,
-//        AV1,
-//    };
-//        MPEG2,
-//        MPEG4,
-//        VC1,
-//        H264,
-//        JPEG,
-//        H264_SVC,
-//        H264_MVC,
-//        HEVC,
-//        VP8,
-//        VP9,
-//        AV1,
-//        NumCodecs,
-//
-//
-//    }
-//    MPEG1, "MPEG-1"
-//        MPEG2,
-//        MPEG4,
-//        VC1,
-//        H264,
-//        JPEG,
-//        H264_SVC,
-//        H264_MVC,
-//        HEVC,
-//        VP8,
-//        VP9,
-//        AV1,
-//        NumCodecs,
-//        "MPEG-1"
-//},
-//    { cudaVideoCodec_MPEG2,     "MPEG-2" },
-//    { cudaVideoCodec_MPEG4,     "MPEG-4 (ASP)" },
-//    { cudaVideoCodec_VC1,       "VC-1/WMV" },
-//    { cudaVideoCodec_H264,      "AVC/H.264" },
-//    { cudaVideoCodec_JPEG,      "M-JPEG" },
-//    { cudaVideoCodec_H264_SVC,  "H.264/SVC" },
-//    { cudaVideoCodec_H264_MVC,  "H.264/MVC" },
-//    { cudaVideoCodec_HEVC,      "H.265/HEVC" },
-//    { cudaVideoCodec_VP8,       "VP8" },
-//    { cudaVideoCodec_VP9,       "VP9" },
-//    { cudaVideoCodec_AV1,       "AV1"
-//
-//
-//
-//    static struct {
-//        cudaVideoCodec eCodec;
-//        const char* name;
-//    } aCodecName[] = {
-//        { cudaVideoCodec_MPEG1,     "MPEG-1"       },
-//        { cudaVideoCodec_MPEG2,     "MPEG-2"       },
-//        { cudaVideoCodec_MPEG4,     "MPEG-4 (ASP)" },
-//        { cudaVideoCodec_VC1,       "VC-1/WMV"     },
-//        { cudaVideoCodec_H264,      "AVC/H.264"    },
-//        { cudaVideoCodec_JPEG,      "M-JPEG"       },
-//        { cudaVideoCodec_H264_SVC,  "H.264/SVC"    },
-//        { cudaVideoCodec_H264_MVC,  "H.264/MVC"    },
-//        { cudaVideoCodec_HEVC,      "H.265/HEVC"   },
-//        { cudaVideoCodec_VP8,       "VP8"          },
-//        { cudaVideoCodec_VP9,       "VP9"          },
-//        { cudaVideoCodec_AV1,       "AV1"          },
-//        { cudaVideoCodec_NumCodecs, "Invalid"      },
-//        { cudaVideoCodec_YUV420,    "YUV  4:2:0"   },
-//        { cudaVideoCodec_YV12,      "YV12 4:2:0"   },
-//        { cudaVideoCodec_NV12,      "NV12 4:2:0"   },
-//        { cudaVideoCodec_YUYV,      "YUYV 4:2:2"   },
-//        { cudaVideoCodec_UYVY,      "UYVY 4:2:2"   },
-//    };
-//
-//
-//}
+string GetChromaString(cudacodec::ChromaFormat chromaFormat) {
+    switch (chromaFormat) {
+    case cudacodec::Monochrome:return "YUV 400 (Monochrome)";
+    case cudacodec::YUV420: return "YUV 420";
+    case cudacodec::YUV422: return "YUV 422";
+    case cudacodec::YUV444: return "YUV 444";
+    case cudacodec::NumFormats: return "Invalid";
+    default: return "Unknown";
+    }
+}
+
+string GetDeinterlaceString(cudacodec::DeinterlaceMode deinterlaceMode) {
+    switch (deinterlaceMode) {
+    case cudacodec::Weave: return "Weave (no deinterlacing)";
+    case cudacodec::Bob: return "Bob";
+    case cudacodec::Adaptive: return "Adaptive deinterlacing";
+    default: return "Unknown";
+    }
+}
+
 // options
 // output all info regarding video file
 // display output
@@ -175,9 +109,11 @@ const String keys =
 
 // include check to see if retrieval of histogram is enabled <- could also display this?
 
-
+//! [main]
 int main(int argc, const char* argv[])
 {
+    // doesn't throw error if input is empty?
+
     CommandLineParser parser(argc, argv, keys);
     parser.about("cv::cudacodec::VideoReader Sample Application, requires CAP_FFMPEG and a supported Nvidia GPU");
     if (parser.has("help"))
@@ -231,7 +167,7 @@ int main(int argc, const char* argv[])
     }
 
     // Time initialization
-
+    //! [initialization]
     cv::TickMeter tm;
     tm.start();
     setDevice(deviceId);
@@ -239,7 +175,7 @@ int main(int argc, const char* argv[])
     cout << "Initialization Time" << endl;
     cout << "   CUDA context : " << std::fixed << std::setprecision(2) <<  tm.getTimeMilli() << "ms" << endl;
     // context initialization
-
+    //! [initialization]
 
 
 
@@ -268,6 +204,7 @@ int main(int argc, const char* argv[])
         // extra output when we can check if decoder works or not and maybe histogram as well
         cout << "Failed to initialize cudacodec::VideoReader with source == " << input << endl;
         cout << e.msg;
+        return -1;
     }
 
     std::ofstream file;
@@ -314,15 +251,16 @@ int main(int argc, const char* argv[])
     const float fpsPlay = fps == 0 ? fmt.fps : fps;
     cout << "Video Input Information :" << endl;
     cout << "    Path : " << input << endl;
-    cout << "    Codec          : " << GetVideoCodecString(fmt.codec) << endl;
+    cout << "    Codec          : " << GetCodecString(fmt.codec) << endl;
     double fpsCap = 0;
     reader->get(CAP_PROP_FPS, fpsCap);
     cout << "    Frame rate     : " << (fpsCap ? fpsCap : fmt.fps) << endl;
-    cout << "    Sequence       : NA" << endl;
     cout << "    Coded size     : [" << fmt.ulWidth << ", " << fmt.ulHeight << "]" << endl;
     cout << "    Display area   : [" << fmt.displayArea.x << ", " << fmt.displayArea.y << ", " << fmt.displayArea.width << ", " << fmt.displayArea.height << "]" << endl;
-    cout << "    Chroma         : " << endl;
+    cout << "    Chroma         : " << GetChromaString(fmt.chromaFormat) << endl;
     cout << "    Bit depth      : " << fmt.nBitDepthMinus8 + 8 << endl;
+    cout << "    Full color range: " << (fmt.videoFullRangeFlag ? "YES" : "NO") << endl;
+    cout << "    Deinterlace Mode: " << GetDeinterlaceString(fmt.deinterlaceMode) << endl;
     if (display)
         cout << "    Frame rate play : " << fpsPlay << endl;
     cout << endl << "Video Decoding Params :" << endl;
@@ -331,6 +269,8 @@ int main(int argc, const char* argv[])
     if (file.is_open())
         cout << "    Destingation : " << output << endl;
     cout << "    Color format : " << colorFormatString << endl;
+
+    // only output if there are any
     cout << endl << "Streaming Options :" << endl;
     if (file.is_open())
         cout << "    Writing raw encoded video to " << output << endl;
@@ -510,6 +450,7 @@ int main(int argc, const char* argv[])
 
     return 0;
 }
+//! [main]
 
 #else
 
