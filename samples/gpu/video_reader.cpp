@@ -14,11 +14,14 @@
 #include <opencv2/core.hpp>
 #include <opencv2/core/opengl.hpp>
 #include <opencv2/cudacodec.hpp>
+#include <opencv2/cudaarithm.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/core/utility.hpp>
+#include <opencv2/imgproc.hpp>
 
 using namespace std;
 using namespace cv;
+using namespace cv::cuda;
 using namespace cv::cudacodec;
 
 string GetCodecString(cudacodec::Codec codec) {
@@ -97,6 +100,7 @@ const String keys =
     "{target_roi_y try | 0 | Output height, should be multiples of 2, defaults to height of source.}"
     "{target_roi_width trw | 0 | Output height, should be multiples of 2, defaults to height of source.}"
     "{target_roi_height trh | 0 | Output height, should be multiples of 2, defaults to height of source.}"
+    "{enable_histogram eh | 0 | Request output and display of decoded luma histogram if supported.}"
     //"{target_height h | 0 | Output height, defaults to height of source.}"
     //"{target_height h | 0 | Output height, defaults to height of source.}"
 };
@@ -136,6 +140,7 @@ int main(int argc, const char* argv[])
     const Size targetSz = { parser.get<int>("target_width"), parser.get<int>("target_height") };
     const Rect srcRoi = { parser.get<int>("src_roi_x"), parser.get<int>("src_roi_y"), parser.get<int>("src_roi_width"), parser.get<int>("src_roi_height") };
     const Rect targetRoi = { parser.get<int>("target_roi_x"), parser.get<int>("target_roi_y"), parser.get<int>("target_roi_width"), parser.get<int>("target_roi_height") };
+    const bool enableHistogram = parser.get<bool>("enable_histogram");
 
     if (!parser.check())
     {
@@ -191,6 +196,7 @@ int main(int argc, const char* argv[])
         params.targetSz = targetSz;
         params.srcRoi = srcRoi;
         params.targetRoi = targetRoi;
+        params.enableHistogram = enableHistogram;
         if (!output.empty()) params.rawMode = true;
         if (benchmark) params.minNumDecodeSurfaces = 20;
         tm.reset();
@@ -249,6 +255,7 @@ int main(int argc, const char* argv[])
 
     FormatInfo fmt = reader->format();
     const float fpsPlay = fps == 0 ? fmt.fps : fps;
+
     cout << "Video Input Information :" << endl;
     cout << "    Path : " << input << endl;
     cout << "    Codec          : " << GetCodecString(fmt.codec) << endl;
@@ -261,23 +268,30 @@ int main(int argc, const char* argv[])
     cout << "    Bit depth      : " << fmt.nBitDepthMinus8 + 8 << endl;
     cout << "    Full color range: " << (fmt.videoFullRangeFlag ? "YES" : "NO") << endl;
     cout << "    Deinterlace Mode: " << GetDeinterlaceString(fmt.deinterlaceMode) << endl;
-    if (display)
-        cout << "    Frame rate play : " << fpsPlay << endl;
+
+
     cout << endl << "Video Decoding Params :" << endl;
     cout << "    Num Surfaces   : " << fmt.ulNumDecodeSurfaces <<endl;
+
     cout << endl << "Output :" << endl;
     if (file.is_open())
-        cout << "    Destingation : " << output << endl;
+        cout << "    Writing raw encoded video to " << output << endl;
     cout << "    Color format : " << colorFormatString << endl;
 
     // only output if there are any
     cout << endl << "Streaming Options :" << endl;
-    if (file.is_open())
-        cout << "    Writing raw encoded video to " << output << endl;
     if(udpSource)
         cout << "    Allow frame drops   : " << udpSource  << endl;
     if(frameDrop)
         cout << "    UDP source   : " << frameDrop << endl;
+
+    cout << endl << "Extra Options :" << endl;
+    if (display)
+        cout << "    Frame rate play : " << fpsPlay << endl;
+    if (enableHistogram)
+        cout << "    Retrieving luma histogram " << endl;
+    //if (file.is_open())
+    //    cout << "    Writing raw encoded video to " << output << endl;
     // output size
 
     //    Codec        : AVC / H.264
@@ -298,10 +312,27 @@ int main(int argc, const char* argv[])
     //const std::string fname(argv[1]);
 
     //cv::namedWindow("CPU", cv::WINDOW_NORMAL);
-    string winName = "GPU (" + colorFormatString + ")";
+    string winName = "GPU (" + colorFormatString + ") - " + input;
+    Mat histImage;
+    GpuMat rollingHistDevice(2*256-1, 256, CV_8U, Scalar(0));
+    int histBinWidth = 0;
+    const string winNameHist = "Luma Histogram", winNameRollingHist = "Rolling Histogram";
     const int windowFlags = targetSz.empty() ? cv::WINDOW_NORMAL : cv::WINDOW_AUTOSIZE;
+    // add a resize if larger than x
     if (display) {
-#if defined(HAVE_OPENGL)
+        if (enableHistogram) {
+            cv::namedWindow(winNameRollingHist, windowFlags);
+            cv::moveWindow(winNameRollingHist, 0, 350);
+
+            cv::namedWindow(winNameHist, windowFlags);
+            cv::moveWindow(winNameHist, 0, 0);
+            // use this to determine type of image fmt.nCounterBitDepth;
+            histImage = Mat(256, 256, CV_8U, Scalar(0));
+            histBinWidth = (double)histImage.cols / fmt.nMaxHistogramBins;
+        }
+
+
+#if defined(HAVE_OPENGL) // add hist to this + compile with OPENGL
         winName += " displayed from device";
         cv::namedWindow(winName, cv::WINDOW_OPENGL | windowFlags);
         cv::cuda::setGlDevice();
@@ -309,12 +340,13 @@ int main(int argc, const char* argv[])
         winName += " displayed from host";
         cv::namedWindow(winName, windowFlags);
 #endif
+        cv::moveWindow(winName, 300, 0);
         cout << "Diplaying decoded frames, press q to quit, p to pause and r to resume." << endl;
     }
 
     Stream stream;
-    GpuMat frameDevice;
-    Mat frameHost;
+    GpuMat frameDevice, histDevice32F, histDevice8U;
+    Mat frameHost, histHost, rollingHistHost;
     const int displayTimeFps = 1000.0f / fpsPlay;
     int nFrames = 0, displayTime = displayTimeFps;
     //cv::TickMeter tm;
@@ -323,14 +355,43 @@ int main(int argc, const char* argv[])
         tm.start();
     }
     double gpuDecodingTimeMs = 0;
-    while (reader->nextFrame(frameDevice, stream)) {
+    while (reader->nextFrame(frameDevice, histDevice32F, stream)) {
 
         if (display) {
 #if defined(HAVE_OPENGL)
             cv::imshow(winName, cv::ogl::Texture2D(frameDevice));
 #else
-            frameDevice.download(frameHost);
-            cv::imshow(winName, frameHost);
+            frameDevice.download(frameHost, stream);
+            cuda::normalize(histDevice32F, histDevice8U, 0, histImage.rows, NORM_MINMAX, CV_8U, noArray(), stream);
+            histDevice8U.download(histHost, stream);
+            //histDevice8U.copyTo(rollingHistDevice(Rect(0, nFrames % rollingHistDevice.rows, rollingHistDevice.cols, 1)), stream);
+            Rect rollingHistRoi;
+            if (nFrames < 2 * 256 - 1) {
+                histDevice8U.copyTo(rollingHistDevice(Rect(0, nFrames, rollingHistDevice.cols, 1)), stream);
+                rollingHistRoi = Rect(0, max(0, nFrames - 255), rollingHistDevice.cols, 256);
+            }
+            else {
+                histDevice8U.copyTo(rollingHistDevice(Rect(0, (nFrames + 1) % 256 + 256 - 1, rollingHistDevice.cols, 1)), stream);
+                rollingHistRoi = Rect(0, (nFrames + 1) % 256, rollingHistDevice.cols, 256);
+                if((nFrames + 1) % 256 == 0)
+                    rollingHistDevice(Rect(0, 256, rollingHistDevice.cols, 256 - 1)).copyTo(rollingHistDevice(Rect(0, 0, rollingHistDevice.cols, 256 - 1)), stream);
+            }
+
+            //if (nFrames) { // reduce impact by doing in reverse - just have a larger frame and follow it down, then reset it.
+            //    rollingHistDevice(Rect(0, 1, rollingHistDevice.cols, rollingHistDevice.rows - 2)).copyTo(rollingHistDevice(Rect(0, 0, rollingHistDevice.cols, rollingHistDevice.rows - 2)), stream);
+            //}
+            //histDevice8U.copyTo(rollingHistDevice(Rect(0, rollingHistDevice.rows - 1, rollingHistDevice.cols, 1)), stream);
+
+            rollingHistDevice(rollingHistRoi).download(rollingHistHost, stream);
+            stream.waitForCompletion();
+            //normalize(histHost, histHost, 0, histImage.rows, NORM_MINMAX);
+            histImage.setTo(0);
+            for (int i = 1; i < fmt.nMaxHistogramBins; i++) {
+                line(histImage, Point(histBinWidth * (i - 1), histImage.rows - histHost.at<uchar>(i - 1)), Point(histBinWidth * (i), histImage.rows - histHost.at<uchar>(i)), Scalar(255, 0, 0), 2, 8, 0);
+            }
+            imshow(winName, frameHost);
+            imshow(winNameHist, histImage);
+            imshow(winNameRollingHist, rollingHistHost);
 #endif
             char c = waitKey(displayTime);
             if (c == 'p')
