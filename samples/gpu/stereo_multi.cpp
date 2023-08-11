@@ -1,6 +1,8 @@
 // This sample demonstrates working on one piece of data using two GPUs.
 // It splits input into two parts and processes them separately on different GPUs.
-
+/**
+ \anchor stereo_multi
+*/
 #ifdef _WIN32
     #define NOMINMAX
     #include <windows.h>

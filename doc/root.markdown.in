@@ -2,6 +2,7 @@ OpenCV modules {#mainpage}
 ==============
 
 - @ref intro
+- @ref cuda_intro
 - @ref tutorial_root
 - @ref tutorial_py_root
 @CMAKE_DOXYGEN_TUTORIAL_JS_ROOT@
