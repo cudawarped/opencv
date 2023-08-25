@@ -54,6 +54,9 @@
 /**
   @defgroup cuda CUDA-accelerated Computer Vision
   @{
+    \brief Provides a host-level API utilizing CUDA for acceleration on Nvidia GPU's. - subset of OpenCV funcionality ...? work for subset which has extra
+
+    For more details see @subpage cuda_intro.
     @defgroup cudacore Core part
     @{
       @defgroup cudacore_init Initialization and Information
