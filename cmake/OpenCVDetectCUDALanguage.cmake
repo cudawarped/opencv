@@ -477,14 +477,14 @@ if(CUDA_FOUND)
 
   macro(ocv_nvcc_flags)
     if(BUILD_SHARED_LIBS)
-      set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -Xcompiler -DCVAPI_EXPORTS)
+      set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -Xcompiler=-DCVAPI_EXPORTS)
     endif()
 
     if(UNIX OR APPLE)
-      set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -Xcompiler -fPIC)
+      set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -Xcompiler=-fPIC)
     endif()
     if(APPLE)
-      set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -Xcompiler -fno-finite-math-only)
+      set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -Xcompiler=-fno-finite-math-only)
     endif()
 
     if(WIN32 AND NOT (CUDA_VERSION VERSION_LESS "11.2"))
