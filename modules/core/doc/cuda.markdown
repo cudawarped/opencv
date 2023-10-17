@@ -2,6 +2,8 @@
 
 @tableofcontents
 
+Mention cuDNN - requrires with CUDA not CUDA modules. .....
+
 ## General Information
 
 The OpenCV CUDA modules are a set of classes and functions which utilize CUDA computational capabilities.
@@ -84,7 +86,29 @@ can be downloaded from [here](https://github.com/opencv/opencv/tree/4.x/samples/
 
 ## Getting Started
 
-### Moving from cv to cv::cuda
+### Transitioning from cv to \ref cv::cuda
+
+Switching to CUDA is straightforward: simply move to the cv::cuda namespace and use cv::cuda::GpuMat in place of cv::Mat. However, optimizing performance can require a more nuanced approach.
+
+#### Example
+
+The following example illustrates how to perform a host-side resize operation using CUDA. Starting with the host-side operation:
+```
+Mat src(1080, 1920, CV_8UC3), dst(720, 1280, CV_8UC3);
+cv::resize(src, dst, dst.size(), 0, 0, InterpolationFlags::INTER_CUBIC);
+```
+
+Achieve the same result with these steps:
+
+1. Upload the src Mat to a cv::cuda::GpuMat.
+2. Use cv::cuda::resize to perform the resize operation on the device.
+3. Download the result back to the \ref dst \ref Mat.
+
+```
+GpuMat srcDevice(src);
+cv::cuda::resize(srcDevice, dstDevice, dst.size(), 0, 0, InterpolationFlags::INTER_CUBIC);
+dstDevice.download(dst);
+```
 
 Once you have built OpenCV with the CUDA modules moving to CUDA is trivial and just envolves switching to the cv::cuda namespace and using cv::cuda::GpuMat instead of cv::Mat as your main container class.  That said getting the most performance from CUDA can be more envolved depending on your work flow.  The next example quickly demostrates the steps required to exactly mirror a host side resize operation on the device - poor performance.  After discussing some of the finer points of the OpenCV CUDA API we will revisit this example to discuss its performance.
 
@@ -135,7 +159,7 @@ cv::cuda::resize(srcDevice, dstDevice, dstDevice.size(), 0, 0, InterpolationFlag
 dstDevice.download(dst);
 ```
 
-@warning The example above shows how to use the cv::cuda namespace and the GpuMat class, but it is not optimal for performance. A more realistic scenario for using CUDA is when you have multiple complex operations to perform on the device. As explained in the next section, there are several factors that affect the speed and efficiency of CUDA operations, such as data transfer, memory allocation, and kernel launch. Uploading and downloading data for each operation is very costly and should be avoided as much as possible. Moreover, some OpenCV functions have subtle differences when used in the cuda namespace, which may also impact the performance. Therefore, you should always measure and compare the CPU and GPU performance for your specific use case and optimize your code accordingly.
+@warning The example above shows how to use the cv::cuda namespace and the GpuMat class, but it is not optimal for performance. A more realistic scenario for using CUDA is when you have multiple complex operations to perform on the device. As explained in the next section, there are several factors that affect the speed and efficiency of CUDA operations, such as data transfer, memory allocation, and kernel launch latency. Uploading and downloading data for each operation is very costly and should be avoided as much as possible. Moreover, some OpenCV functions have subtle differences when used in the cuda namespace, which may also impact the performance. Therefore, you should always measure and compare the CPU and GPU performance for your specific use case and optimize your code accordingly.
 
 ### Differences between host and device functions
 Although the cv::cuda namespace provides many functions that are similar to the host functions in the cv namespace, there are some important differences that you should be aware of when using the CUDA API. These differences are mainly related to the availability, functionality, and performance of the device functions.
@@ -146,16 +170,83 @@ Although the cv::cuda namespace provides many functions that are similar to the 
 
  - **Performance**: The base storage class for CUDA is cv::cuda::GpuMat, whose memory is allocated on the GPU. This means that any functions with an cv::InputArray or cv::OutputArray argument require a cuda::GpuMat. A cuda::GpuMat can be constructed in many ways (e.g., dstDevice(dst.size(), dst.type())), but it always involves allocation of memory on the device. This operation has a significant overhead and for maximum performance should be performed during initialization, either explicitly or using cv::cuda::BufferPool. Additionally, when transferring data between the host and device, either by constructing a cuda::GpuMat from a cv::Mat (e.g., GpuMat srcDevice(src)) or explicitly uploading/downloading (e.g., dstDevice.download(dst)) to/from the device, you should be aware of the bandwidth and latency costs of data transfer. You should minimize the number and size of data transfers as much as possible and use asynchronous methods when available.
 
+### Initialization delay
+Context PTX etc. etc.
+
 ### Synchronous and streamed modes of operation
+
+I want to describe the two modes of operation when working with the OpenCV CUDA routines.  The first is when a CUDA stream is passed to a function.  In this case device operations will be placed in CUDA streams and if possible the function will be asynchronous with respect to the host.  The second case is when a stream is not passed to a function.  In that case the function will be synchronous with respect to the host.  I am not sure what to call these two modes of operation, I wanted to call them synchronous and asynchronous but this is not correct because the streaming version is not always asyncrhronous.  Can you suggest possible names for the two modes of operation, an alternative to the phrase modes of operation and summarize the above in the style of the description that would be included in the documentation for a proffesional api?
+
+One possible way to summarize the above is:
+
+The OpenCV CUDA functions can operate in two different ways, depending on whether a CUDA stream is passed as an argument or not. These ways can be called streaming mode and blocking mode, respectively.
+
+In streaming mode, the device operations are placed in the specified CUDA stream and the function may return before the operations are completed. This allows for concurrent execution of multiple functions on different streams, as well as overlapping of CPU and GPU work. However, streaming mode requires explicit synchronization of the streams when the results are needed on the host.
+
+In blocking mode, the device operations are executed in the default stream and the function waits until they are finished. This ensures that the results are available on the host as soon as the function returns, but it may reduce the parallelism and performance of the application. Blocking mode is simpler to use and does not require any synchronization of the streams.
 
 Quick summary and then subsections:
 OpenCV CUDA modules have two different modes of operation: synchronous and streamed.  To fully understand the implications of the streamed API it is recommended to first understand how CUDA streams operate be refering to the Nvidia documentation before reading the below to understand how they are used in the context of OpenCV.  That said the important distinction between the two can be summarized as:
  - **Synchronous**: functions are synchronous with respect to the host.
  - **Streamed**: where possible functions are asynchronous with respect to the host with device operations placed in CUDA streams (see cv::cuda::Stream for more details).
 
+There are many reasons for using the streamed over the synchronous mode of operation (ref to Nvidia docs) but when moving to cv::cuda one of the most important things to understand is launch latency when using the synchrouns mode of operation.  The reason for this is the move is most likely to increase the performance, reduce execution time and in order to determine this code will be profiled or timed, oncde users are familiar with the initialization delay and memory overhead without an understanding of the launch latency leads a lot of newcomers to CUDA to conclude that the CUDA function is no faster than its CPU counterpart.
+
+To understand the launch latency I have set up a toy example where the cuda::threshold function is called three times in a row.  In the first part this is performed synchronously and in the second the operation is streamed.  This is profiled in Nvidia Nsight Systems and the resutls shown in Fig ..
+
+#### Example of Launch Latency
+In this example the same cv::threshold fuction will be applied 3 times in succession, first synchronously and then streamed.
+
+First we set the device to initialize everything to ensure that the we are only profiling the kernel execution and not the overhead of CUDA context creation, memory initialization or the intital delay from loading the device code for the threshold function.
+
+**Syncronous Launch Latency**
+
+
+**Streaming Launch Latency**
+
+
+Rule of thumb?
+
+### Timing
+Event timers measure GPU execution, CPU includes launch latency
+
+ To understand why you might want to
+
  First a quick detore high level overview of CUDA job submission
   - latency - call function job submitted delay then execution
   - when an OpenCV CUDA function is called which performs some work on the device, under the hood a "job" is submitted? runtime api call, check nsight compute - can show from example.  This could be after brief descritpion of operation
+
+ - With Synchronization: You'll notice a latency gap between each Runtime API call and the actual kernel execution. This is the launch latency you pay for each kernel when you synchronize immediately afterward.
+
+ - Without Synchronization: The latency gap should be observed only once before the first kernel launch, thus showcasing the advantage of minimizing the number of synchronization points.
+
+The above is self explaintory however to understand its implications you need to understand CUDA kernel launch latency
+
+####
+
+     With Synchronization: When you synchronize after each kernel launch, you'll observe a clear gap between each "Runtime API" section and its corresponding "Kernel" section in the timeline. This gap represents the kernel launch latency. You'll notice that this latency is incurred for each kernel invocation.
+
+    Without Synchronization: When kernels are launched without intermediate synchronization, you'll still see a latency gap, but only before the first kernel starts. Subsequent kernels will queue up and execute more efficiently, effectively hiding the latency of launching those kernels.
+
+Implications of Kernel Launch Latency
+
+    Performance Overhead: Each synchronization call introduces a latency period that could have been used for productive computation.
+
+    Pipeline Stalls: Frequent synchronization calls can lead to pipeline stalls, meaning the hardware sits idle when it could be executing other kernels or operations.
+
+    Reduced Throughput: Incurring launch latency for each kernel restricts the ability to execute kernels back-to-back, reducing the computational throughput.
+
+Strategies to Minimize Latency
+
+    Batching: Accumulate work so that you can launch a fewer number of more substantial kernels. This way, you're leveraging the full potential of the hardware for a more extended period, thereby hiding the latency cost.
+
+    Overlap of Computation and Communication: Use CUDA Streams to overlap data transfer and computation. This can often hide the latency associated with each operation.
+
+    Asynchronous Operations: Use asynchronous memory copies and kernel launches when possible. This allows the CPU to continue queuing up more work while the GPU is processing, further reducing visible latency.
+
+Conclusion
+
+Understanding and identifying kernel launch latency is crucial for optimizing performance in CUDA applications. The idea is to pay this cost as infrequently as possible by carefully designing your application to minimize the number of synchronization points. Nsight Compute provides a powerful toolset for observing these latencies and helps you make informed decisions on optimizing them.
 
 Description of sunch async operation
 
