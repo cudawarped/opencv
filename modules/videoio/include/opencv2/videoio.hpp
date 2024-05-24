@@ -232,6 +232,8 @@ enum VideoWriterProperties {
   VIDEOWRITER_PROP_RAW_VIDEO = 9, //!< (**open-only**) Set to non-zero to enable encapsulation of an encoded raw video stream. Each raw encoded video frame should be passed to VideoWriter::write() as single row or column of a \ref CV_8UC1 Mat. \note If the key frame interval is not 1 then it must be manually specified by the user. This can either be performed during initialization passing \ref VIDEOWRITER_PROP_KEY_INTERVAL as one of the extra encoder params  to \ref VideoWriter::VideoWriter(const String &, int, double, const Size &, const std::vector< int > &params) or afterwards by setting the \ref VIDEOWRITER_PROP_KEY_FLAG with \ref VideoWriter::set() before writing each frame. FFMpeg backend only.
   VIDEOWRITER_PROP_KEY_INTERVAL = 10, //!< (**open-only**) Set the key frame interval using raw video encapsulation (\ref VIDEOWRITER_PROP_RAW_VIDEO != 0). Defaults to 1 when not set. FFMpeg backend only.
   VIDEOWRITER_PROP_KEY_FLAG = 11, //!< Set to non-zero to signal that the following frames are key frames or zero if not, when encapsulating raw video (\ref VIDEOWRITER_PROP_RAW_VIDEO != 0). FFMpeg backend only.
+  VIDEOWRITER_PROP_PTS_INDEX = 12, //!< Presentation index of the encoded frame when encapsulating raw video (\ref VIDEOWRITER_PROP_RAW_VIDEO != 0). FFMpeg backend only. Notes about presentation and decode index being different with B frames.
+  VIDEOWRITER_PROP_B_FRAME_DTS_DELAY = 13, //!< Delay in dts due to out of order b frame decoding, eg. FFMpeg backend only. Notes about presentation and decode index being different with B frames.
 #ifndef CV_DOXYGEN
   CV__VIDEOWRITER_PROP_LATEST
 #endif
