@@ -1585,10 +1585,13 @@ bool CvCapture_FFMPEG::grabFrame()
 
     if (valid) {
         if (picture_pts == AV_NOPTS_VALUE_) {
-            if (!rawMode)
+            if (!rawMode) {
+                std::cout << "Frame (" << frame_number << ") - Pts: " << picture->pts << ", Pos: " << picture->pkt_pos << ", Dts: " << picture->pkt_dts << ", Duration: " << picture->pkt_duration << ", CPN: " << picture->coded_picture_number << ", Flags: " << picture->flags << ", Num: " << picture->time_base.num << ", Den: " << picture->time_base.den << std::endl;
                 picture_pts = picture->CV_FFMPEG_PTS_FIELD != AV_NOPTS_VALUE_ && picture->CV_FFMPEG_PTS_FIELD != 0 ? picture->CV_FFMPEG_PTS_FIELD : picture->pkt_dts;
+            }
             else {
                 const AVPacket& packet_raw = packet.data != 0 ? packet : packet_filtered;
+                std::cout << "Packet (" << frame_number << ") - Pts: " << packet_raw.pts << ", Pos: " << packet_raw.pos << ", DTS: " << packet_raw.dts << ", Duration: " << packet_raw.duration << ", Flags: " << packet_raw.flags << ", Num: " << packet_raw.time_base.num << ", Den: " << packet_raw.time_base.den << std::endl;
                 picture_pts = packet_raw.pts != AV_NOPTS_VALUE_ && packet_raw.pts != 0 ? packet_raw.pts : packet_raw.dts;
                 if (picture_pts < 0) picture_pts = 0;
             }
@@ -2181,7 +2184,7 @@ void CvVideoWriter_FFMPEG::init()
     encode_video = true;
     idr_period = 0;
     key_frame = false;
-    pts_index = 0;
+    pts_index = -1;
     b_frame_dts_delay = 0;
 }
 
@@ -2362,8 +2365,10 @@ static int icv_av_encapsulate_video_FFMPEG(AVFormatContext* oc, AVStream* video_
 #endif
     if(key_frame)
         pkt->flags |= PKT_FLAG_KEY;
-    pkt->pts = pts_index;// AV_NOPTS_VALUE;// (frame_idx % 2 ? frame_idx + 1 : frame_idx == 0 ? frame_idx : frame_idx - 1) + 3;
+    pkt->pts = pts_index == -1 ? frame_idx : pts_index;
     pkt->dts = frame_idx - b_frame_dts_delay;
+    //pkt->pos = frame_idx;
+    pkt->duration = 1;
     pkt->size = sz;
     pkt->data = data;
     av_packet_rescale_ts(pkt, c->time_base, video_st->time_base);
@@ -2663,7 +2668,7 @@ bool CvVideoWriter_FFMPEG::setProperty(int property_id, double value)
     case VIDEOWRITER_PROP_PTS_INDEX:
         pts_index = static_cast<int>(value);
         break;
-    case VIDEOWRITER_PROP_B_FRAME_DTS_DELAY:
+    case VIDEOWRITER_PROP_B_FRAME_PRESENTATION_DELAY:
         b_frame_dts_delay = static_cast<int>(value);
         break;
     default:
@@ -3193,7 +3198,6 @@ bool CvVideoWriter_FFMPEG::open( const char * filename, int fourcc,
         context->bit_rate = (int) lbit_rate;
 
         /* open the codec */
-        context->color_range = AVCOL_RANGE_JPEG;
         err = !encode_video ? 0 : avcodec_open2(context, codec, NULL);
         if (err >= 0) {
 #if USE_AV_HW_CODECS
@@ -3228,7 +3232,6 @@ bool CvVideoWriter_FFMPEG::open( const char * filename, int fourcc,
     // Copy all to codecpar...
     // !!! https://stackoverflow.com/questions/15897849/c-ffmpeg-not-writing-avcc-box-information
     avcodec_parameters_from_context(video_st->codecpar, context);
-    video_st->codecpar->color_range = AVCOL_RANGE_JPEG;
 #endif
 
     if (encode_video) {

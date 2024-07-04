@@ -293,7 +293,7 @@ const videoio_container_get_params_t videoio_container_get_params[] =
 
 INSTANTIATE_TEST_CASE_P(/**/, videoio_container_get, testing::ValuesIn(videoio_container_get_params));
 
-typedef tuple<string, string, int, int> videoio_encapsulate_params_t;
+typedef tuple<string, string, int, int, int, double, bool, bool> videoio_encapsulate_params_t;
 typedef testing::TestWithParam< videoio_encapsulate_params_t > videoio_encapsulate;
 
 TEST_P(videoio_encapsulate, write)
@@ -307,6 +307,10 @@ TEST_P(videoio_encapsulate, write)
     const int idrPeriod = get<2>(GetParam());
     const int nFrames = get<3>(GetParam());
     const string fileNameOut = tempfile(cv::format("test_encapsulated_stream.%s", ext.c_str()).c_str());
+    const int bFrameDtsDelay = get<4>(GetParam());
+    const double fpsForPts = get<5>(GetParam()); // VideoCapture returns the average frame rate which is not always equal to the frame rate used in the frames sampled in this test
+    const bool setPts = get<6>(GetParam());
+    const bool tsWorking = get<7>(GetParam());
 
     // Use VideoWriter to encapsulate encoded video read with VideoReader
     {
@@ -314,7 +318,8 @@ TEST_P(videoio_encapsulate, write)
         ASSERT_TRUE(capRaw.isOpened());
         const int width = static_cast<int>(capRaw.get(CAP_PROP_FRAME_WIDTH));
         const int height = static_cast<int>(capRaw.get(CAP_PROP_FRAME_HEIGHT));
-        const double fps = capRaw.get(CAP_PROP_FPS);
+        const double fps = (fpsForPts == 0 ? capRaw.get(CAP_PROP_FPS) : fpsForPts) ;
+        const double msPerFrame = 1000.0 / fps;
         const int codecExtradataIndex = static_cast<int>(capRaw.get(CAP_PROP_CODEC_EXTRADATA_INDEX));
         Mat extraData;
         capRaw.retrieve(extraData, codecExtradataIndex);
@@ -323,6 +328,8 @@ TEST_P(videoio_encapsulate, write)
 
         VideoWriter container(fileNameOut, api, fourcc, fps, { width, height }, { VideoWriterProperties::VIDEOWRITER_PROP_RAW_VIDEO, 1, VideoWriterProperties::VIDEOWRITER_PROP_KEY_INTERVAL, idrPeriod });
         ASSERT_TRUE(container.isOpened());
+        if (bFrameDtsDelay > 0)
+            ASSERT_TRUE(container.set(VIDEOWRITER_PROP_B_FRAME_PRESENTATION_DELAY, bFrameDtsDelay));
         Mat rawFrame;
         for (int i = 0; i < nFrames; i++) {
             ASSERT_TRUE(capRaw.read(rawFrame));
@@ -335,6 +342,10 @@ TEST_P(videoio_encapsulate, write)
                 rawFrame = Mat(1, newSz, CV_8UC1);
                 memcpy(rawFrame.data, extraData.data, extraData.total());
                 memcpy(rawFrame.data + extraData.total(), tmp.data, tmp.total());
+            }
+            if(setPts){
+                const double posMs = capRaw.get(CAP_PROP_POS_MSEC);
+                ASSERT_TRUE(container.set(VIDEOWRITER_PROP_PTS_INDEX, round(capRaw.get(CAP_PROP_POS_MSEC) / msPerFrame)));
             }
             container.write(rawFrame);
         }
@@ -349,9 +360,11 @@ TEST_P(videoio_encapsulate, write)
         ASSERT_TRUE(capReference.isOpened());
         ASSERT_TRUE(capActual.isOpened());
         ASSERT_TRUE(capActualRaw.isOpened());
-        const double fpsReference = capReference.get(CAP_PROP_FPS);
-        const double fpsActual = capActual.get(CAP_PROP_FPS);
-        ASSERT_NEAR(fpsReference, fpsActual, 1e-2);
+        if (fpsForPts == 0) {
+            const double fpsReference = capReference.get(CAP_PROP_FPS);
+            const double fpsActual = capActual.get(CAP_PROP_FPS);
+            ASSERT_NEAR(fpsReference, fpsActual, 1e-2);
+        }
         const int nFramesActual = static_cast<int>(capActual.get(CAP_PROP_FRAME_COUNT));
         ASSERT_EQ(nFrames, nFramesActual);
 
@@ -362,11 +375,12 @@ TEST_P(videoio_encapsulate, write)
             ASSERT_TRUE(capActual.read(actual));
             ASSERT_FALSE(actual.empty());
             ASSERT_EQ(0, cvtest::norm(reference, actual, NORM_INF));
-
             ASSERT_TRUE(capActualRaw.grab());
             const bool keyFrameActual = capActualRaw.get(CAP_PROP_LRF_HAS_KEY_FRAME) == 1.;
             const bool keyFrameReference = idrPeriod ? i % idrPeriod == 0 : 1;
             ASSERT_EQ(keyFrameReference, keyFrameActual);
+            if (tsWorking)
+                ASSERT_EQ(round(capReference.get(CAP_PROP_POS_MSEC)), round(capActual.get(CAP_PROP_POS_MSEC)));
         }
     }
 
@@ -375,29 +389,29 @@ TEST_P(videoio_encapsulate, write)
 
 const videoio_encapsulate_params_t videoio_encapsulate_params[] =
 {
-    videoio_encapsulate_params_t("video/big_buck_bunny.h264", "avi", 125, 125),
-    videoio_encapsulate_params_t("video/big_buck_bunny.h265", "mp4", 125, 125),
-    videoio_encapsulate_params_t("video/big_buck_bunny.wmv", "wmv", 12, 13),
-    videoio_encapsulate_params_t("video/big_buck_bunny.mp4", "mp4", 12, 13),
-    videoio_encapsulate_params_t("video/big_buck_bunny.mjpg.avi", "mp4", 0, 4),
-    videoio_encapsulate_params_t("video/big_buck_bunny.mov", "mp4", 12, 13),
-    videoio_encapsulate_params_t("video/big_buck_bunny.avi", "mp4", 125, 125),
-    videoio_encapsulate_params_t("video/big_buck_bunny.mpg", "mp4", 12, 13),
-    videoio_encapsulate_params_t("video/VID00003-20100701-2204.wmv", "wmv", 12, 13),
-    videoio_encapsulate_params_t("video/VID00003-20100701-2204.mpg", "mp4", 12,13),
-    videoio_encapsulate_params_t("video/VID00003-20100701-2204.avi", "mp4", 12, 13),
-    videoio_encapsulate_params_t("video/VID00003-20100701-2204.3GP", "mp4", 51, 52),
-    videoio_encapsulate_params_t("video/sample_sorenson.avi", "mp4", 12, 13),
-    videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libxvid.mp4", "mp4", 3, 4),
-    videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.mpeg2video.mp4", "mp4", 12, 13),
-    videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.mjpeg.mp4", "mp4", 0, 5),
-    videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libx264.mp4", "avi", 15, 15),
-    videoio_encapsulate_params_t("../cv/tracking/faceocc2/data/faceocc2.webm", "webm", 128, 129),
-    videoio_encapsulate_params_t("../cv/video/1920x1080.avi", "mp4", 12, 13),
-    videoio_encapsulate_params_t("../cv/video/768x576.avi", "avi", 15, 16)
+    videoio_encapsulate_params_t("video/big_buck_bunny.h264", "avi", 125, 125, 0, 0, false, false), // raw no timestamp information
+    videoio_encapsulate_params_t("video/big_buck_bunny.h265", "mp4", 125, 125, 0, 0, false, false), // raw no timestamp information
+    videoio_encapsulate_params_t("video/big_buck_bunny.wmv", "wmv", 12, 13, 0, 0, false, true),
+    videoio_encapsulate_params_t("video/big_buck_bunny.mp4", "mp4", 12, 13, 0, 0, false, true),
+    videoio_encapsulate_params_t("video/big_buck_bunny.mjpg.avi", "mp4", 0, 4, 0, 0, false, true),
+    videoio_encapsulate_params_t("video/big_buck_bunny.mov", "mp4", 12, 13, 0, 0, false, true),
+    videoio_encapsulate_params_t("video/big_buck_bunny.avi", "mp4", 125, 125, 0, 0, false, false), // VideoCapture returning wrong CAP_MSEC value for out of order frames no pts, falling back to DTS
+    videoio_encapsulate_params_t("video/big_buck_bunny.mpg", "mp4", 12, 13, 0, 0, false, false), // pts is different to CAP_MSEC / (1000.0/ fps)
+    videoio_encapsulate_params_t("video/VID00003-20100701-2204.wmv", "wmv", 12, 13, 0, 0, false, true),
+    videoio_encapsulate_params_t("video/VID00003-20100701-2204.mpg", "mp4", 12, 13, 0, 0, false, false), // pts is different to CAP_MSEC / (1000.0/ fps)
+    videoio_encapsulate_params_t("video/VID00003-20100701-2204.avi", "mp4", 12, 13, 0, 0, false, false), // unable to correctly set pts for avi source
+    videoio_encapsulate_params_t("video/VID00003-20100701-2204.3GP", "3gp", 51, 52, 0, 30, true, true), // Hack setting fps to 30 because VideoCapture returns the average fps not the fps required to correctly calculate the pts index
+    videoio_encapsulate_params_t("video/sample_sorenson.avi", "mp4", 12, 13, 0, 0, false, true),
+    videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libxvid.mp4", "mp4", 3, 4, 0, 0, false, true),
+    videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.mpeg2video.mp4", "mpg", 12, 13, 0, 0, false, true),
+    videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.mjpeg.mp4", "mp4", 0, 5, 0, 0, false, true),
+    videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libx264.mp4", "mp4", 15, 15, 2, 0, true, true),
+    videoio_encapsulate_params_t("../cv/tracking/faceocc2/data/faceocc2.webm", "webm", 128, 129, 0, 0, false, true),
+    videoio_encapsulate_params_t("../cv/video/1920x1080.avi", "mp4", 12, 13, 0, 0, false, true),
+    videoio_encapsulate_params_t("../cv/video/768x576.avi", "avi", 15, 16, 0, 0, false, true),
     // Not supported by with FFmpeg:
-    //videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libx265.mp4", "mp4", 15, 15),
-    //videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libvpx-vp9.mp4", "mp4", 15, 15),
+    videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libx265.mp4", "mp4", 15, 15, 2, 0, true, true),
+    videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libvpx-vp9.mp4", "mp4", 15, 15, 0, 0, false, true),
 
 };
 
@@ -484,6 +498,166 @@ TEST(videoio_encapsulate_set_idr, write)
 
     ASSERT_EQ(0, remove(fileNameOut.c_str()));
 }
+
+typedef tuple<string, string, int, double> videoio_encapsulate_ts_params_t;
+typedef testing::TestWithParam< videoio_encapsulate_ts_params_t > videoio_encapsulate_ts;
+
+TEST_P(videoio_encapsulate_ts, write)
+{
+    const VideoCaptureAPIs api = CAP_FFMPEG;
+    if (!videoio_registry::hasBackend(api))
+        throw SkipTestException("FFmpeg backend was not found");
+
+#if defined(WIN32)
+    throw SkipTestException("Test disabled on Windows until the FFMpeg wrapper is updated to include PRXXXX.");
+#endif
+
+    const string sourceVideo = findDataFile(get<0>(GetParam()));
+    const string destVideo = tempfile("test_encapsulated_stream_ts.mp4");
+    const int fourcc = fourccFromString(get<1>(GetParam()));
+    const int nFrames = get<2>(GetParam());
+    const double bFrameDtsDelay = get<3>(GetParam());
+
+    // extract raw encoded video and write to a new container
+    {
+        VideoCapture capRaw(sourceVideo, CAP_FFMPEG, { CAP_PROP_FORMAT, -1 });
+        Mat frame;
+        const Size sz(static_cast<int>(capRaw.get(CAP_PROP_FRAME_WIDTH)), static_cast<int>(capRaw.get(CAP_PROP_FRAME_HEIGHT)));
+        const double fps = capRaw.get(CAP_PROP_FPS);
+        ASSERT_GT(fps, 0);
+        const double msPerFrame = 1000.0 / fps;
+        VideoWriter container(destVideo, fourcc, fps, sz, { VideoWriterProperties::VIDEOWRITER_PROP_RAW_VIDEO, 1 });
+        if (bFrameDtsDelay)
+            ASSERT_TRUE(container.set(VIDEOWRITER_PROP_B_FRAME_PRESENTATION_DELAY, bFrameDtsDelay));
+        for (int i = 0; i < nFrames; i++) {
+            ASSERT_TRUE(capRaw.read(frame));
+            if (bFrameDtsDelay)
+                ASSERT_TRUE(container.set(VIDEOWRITER_PROP_PTS_INDEX, capRaw.get(CAP_PROP_POS_MSEC) / msPerFrame));
+            container.write(frame);
+            //std::cout << i << ", " << capRaw.get(CAP_PROP_POS_FRAMES) << ", " << capRaw.get(CAP_PROP_POS_MSEC) << ", " << frame.size() << std::endl;
+        }
+    }
+
+    // verify frames and timestamps from new container are identical to the original
+    {
+        VideoCapture capSource(sourceVideo, CAP_FFMPEG), capDest(destVideo, CAP_FFMPEG);
+        Mat frameSource, frameDest;
+        for (int i = 0; i < nFrames; i++) {
+            ASSERT_TRUE(capSource.read(frameSource));
+            ASSERT_TRUE(capDest.read(frameDest));
+            Mat tmp = frameSource != frameDest;
+            double nVal = cv::norm(frameSource, frameDest, NORM_L1);
+            ASSERT_TRUE(cv::norm(frameSource, frameDest, NORM_L1) == 0);
+            //std::cout << i << ", " << capDest.get(CAP_PROP_POS_FRAMES) << ", " << capSource.get(CAP_PROP_POS_MSEC) << ", " << capDest.get(CAP_PROP_POS_MSEC) << ", " << frameSource.size() << std::endl;
+            ASSERT_EQ(capSource.get(CAP_PROP_POS_MSEC), capDest.get(CAP_PROP_POS_MSEC));
+        }
+    }
+
+
+    ASSERT_EQ(0, remove(destVideo.c_str()));
+
+    //const int idrPeriod = get<2>(GetParam());
+
+    //const string fileName = findDataFile(get<0>(GetParam()));
+    //const string ext = get<1>(GetParam());
+    //const int idrPeriod = get<2>(GetParam());
+    //const int nFrames = get<3>(GetParam());
+    //const string fileNameOut = tempfile(cv::format("test_encapsulated_stream.%s", ext.c_str()).c_str());
+
+    //// Use VideoWriter to encapsulate encoded video read with VideoReader
+    //{
+    //    VideoCapture capRaw(fileName, api, { CAP_PROP_FORMAT, -1 });
+    //    ASSERT_TRUE(capRaw.isOpened());
+    //    const int width = static_cast<int>(capRaw.get(CAP_PROP_FRAME_WIDTH));
+    //    const int height = static_cast<int>(capRaw.get(CAP_PROP_FRAME_HEIGHT));
+    //    const double fps = capRaw.get(CAP_PROP_FPS);
+    //    const int codecExtradataIndex = static_cast<int>(capRaw.get(CAP_PROP_CODEC_EXTRADATA_INDEX));
+    //    Mat extraData;
+    //    capRaw.retrieve(extraData, codecExtradataIndex);
+    //    const int fourcc = static_cast<int>(capRaw.get(CAP_PROP_FOURCC));
+    //    const bool mpeg4 = (fourcc == fourccFromString("FMP4"));
+
+    //    VideoWriter container(fileNameOut, api, fourcc, fps, { width, height }, { VideoWriterProperties::VIDEOWRITER_PROP_RAW_VIDEO, 1, VideoWriterProperties::VIDEOWRITER_PROP_KEY_INTERVAL, idrPeriod });
+    //    ASSERT_TRUE(container.isOpened());
+    //    Mat rawFrame;
+    //    for (int i = 0; i < nFrames; i++) {
+    //        ASSERT_TRUE(capRaw.read(rawFrame));
+    //        ASSERT_FALSE(rawFrame.empty());
+    //        if (i == 0 && mpeg4) {
+    //            Mat tmp = rawFrame.clone();
+    //            const size_t newSzt = tmp.total() + extraData.total();
+    //            const int newSz = static_cast<int>(newSzt);
+    //            ASSERT_TRUE(newSzt == static_cast<size_t>(newSz));
+    //            rawFrame = Mat(1, newSz, CV_8UC1);
+    //            memcpy(rawFrame.data, extraData.data, extraData.total());
+    //            memcpy(rawFrame.data + extraData.total(), tmp.data, tmp.total());
+    //        }
+    //        container.write(rawFrame);
+    //    }
+    //    container.release();
+    //}
+
+    //std::cout << "Checking encapsulated video container: " << fileNameOut << std::endl;
+
+    //// Check encapsulated video container is "identical" to the original
+    //{
+    //    VideoCapture capReference(fileName), capActual(fileNameOut), capActualRaw(fileNameOut, api, { CAP_PROP_FORMAT, -1 });
+    //    ASSERT_TRUE(capReference.isOpened());
+    //    ASSERT_TRUE(capActual.isOpened());
+    //    ASSERT_TRUE(capActualRaw.isOpened());
+    //    const double fpsReference = capReference.get(CAP_PROP_FPS);
+    //    const double fpsActual = capActual.get(CAP_PROP_FPS);
+    //    ASSERT_NEAR(fpsReference, fpsActual, 1e-2);
+    //    const int nFramesActual = static_cast<int>(capActual.get(CAP_PROP_FRAME_COUNT));
+    //    ASSERT_EQ(nFrames, nFramesActual);
+
+    //    Mat reference, actual;
+    //    for (int i = 0; i < nFrames; i++) {
+    //        ASSERT_TRUE(capReference.read(reference));
+    //        ASSERT_FALSE(reference.empty());
+    //        ASSERT_TRUE(capActual.read(actual));
+    //        ASSERT_FALSE(actual.empty());
+    //        ASSERT_EQ(0, cvtest::norm(reference, actual, NORM_INF));
+
+    //        ASSERT_TRUE(capActualRaw.grab());
+    //        const bool keyFrameActual = capActualRaw.get(CAP_PROP_LRF_HAS_KEY_FRAME) == 1.;
+    //        const bool keyFrameReference = idrPeriod ? i % idrPeriod == 0 : 1;
+    //        ASSERT_EQ(keyFrameReference, keyFrameActual);
+    //    }
+    //}
+
+    //ASSERT_EQ(0, remove(fileNameOut.c_str()));
+}
+
+const videoio_encapsulate_ts_params_t videoio_encapsulate_ts_params[] =
+{
+    videoio_encapsulate_ts_params_t("video/sample_322x242_15frames.yuv420p.libxvid.mp4", "hev1", 15, 2), // Presentation Order: I1,P1,P2,B1,B2,P3, Decoding Order: I1,P1,P2,P3,B2,B1, therefore max dts offset of 2 from decoding B1
+    videoio_encapsulate_ts_params_t("video/sample_322x242_15frames.yuv420p.mpeg2video.mp4", "mpg2", 15, 0)
+    //videoio_encapsulate_ts_params_t("video/big_buck_bunny.wmv", "wmv", 12, 13),
+    //videoio_encapsulate_ts_params_t("video/big_buck_bunny.mp4", "mp4", 12, 13)
+    //videoio_encapsulate_params_ts_t("video/big_buck_bunny.mjpg.avi", "mp4", 0, 4),
+    //videoio_encapsulate_params_ts_t("video/big_buck_bunny.mov", "mp4", 12, 13),
+    //videoio_encapsulate_params_ts_t("video/big_buck_bunny.avi", "mp4", 125, 125),
+    //videoio_encapsulate_params_ts_t("video/big_buck_bunny.mpg", "mp4", 12, 13),
+    //videoio_encapsulate_params_ts_t("video/VID00003-20100701-2204.wmv", "wmv", 12, 13),
+    //videoio_encapsulate_params_ts_t("video/VID00003-20100701-2204.mpg", "mp4", 12,13),
+    //videoio_encapsulate_params_ts_t("video/VID00003-20100701-2204.avi", "mp4", 12, 13),
+    //videoio_encapsulate_params_ts_t("video/VID00003-20100701-2204.3GP", "mp4", 51, 52),
+    //videoio_encapsulate_params_ts_t("video/sample_sorenson.avi", "mp4", 12, 13)
+    //videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libxvid.mp4", "mp4", 3, 4),
+    //videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.mpeg2video.mp4", "mp4", 12, 13),
+    //videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.mjpeg.mp4", "mp4", 0, 5),
+    //videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libx264.mp4", "avi", 15, 15),
+    //videoio_encapsulate_params_t("../cv/tracking/faceocc2/data/faceocc2.webm", "webm", 128, 129),
+    //videoio_encapsulate_params_t("../cv/video/1920x1080.avi", "mp4", 12, 13),
+    //videoio_encapsulate_params_t("../cv/video/768x576.avi", "avi", 15, 16)
+    // Not supported by with FFmpeg:
+    //videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libx265.mp4", "mp4", 15, 15),
+    //videoio_encapsulate_params_t("video/sample_322x242_15frames.yuv420p.libvpx-vp9.mp4", "mp4", 15, 15),
+
+};
+
+INSTANTIATE_TEST_CASE_P(/**/, videoio_encapsulate_ts, testing::ValuesIn(videoio_encapsulate_ts_params));
 
 typedef tuple<string, string, int> videoio_skip_params_t;
 typedef testing::TestWithParam< videoio_skip_params_t > videoio_skip;
