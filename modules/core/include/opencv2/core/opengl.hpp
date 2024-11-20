@@ -66,6 +66,16 @@ do this with namedWindow function or with other OpenGL toolkit (GLUT, for exampl
 
 /////////////////// OpenGL Objects ///////////////////
 
+/** @brief The target defines how you intend to use the buffer object.
+*/
+enum Target
+{
+    ARRAY_BUFFER = 0x8892, //!< The buffer will be used as a source for vertex data
+    ELEMENT_ARRAY_BUFFER = 0x8893, //!< The buffer will be used for indices (in glDrawElements, for example)
+    PIXEL_PACK_BUFFER = 0x88EB, //!< The buffer will be used for reading from OpenGL textures
+    PIXEL_UNPACK_BUFFER = 0x88EC  //!< The buffer will be used for writing to OpenGL textures
+};
+
 /** @brief Smart pointer for OpenGL buffer object with reference counting.
 
 Buffer Objects are OpenGL objects that store an array of unformatted memory allocated by the OpenGL
@@ -76,18 +86,9 @@ ogl::Buffer has interface similar with Mat interface and represents 2D array mem
 
 ogl::Buffer supports memory transfers between host and device and also can be mapped to CUDA memory.
  */
-class CV_EXPORTS Buffer
+class CV_EXPORTS_W Buffer
 {
 public:
-    /** @brief The target defines how you intend to use the buffer object.
-    */
-    enum Target
-    {
-        ARRAY_BUFFER         = 0x8892, //!< The buffer will be used as a source for vertex data
-        ELEMENT_ARRAY_BUFFER = 0x8893, //!< The buffer will be used for indices (in glDrawElements, for example)
-        PIXEL_PACK_BUFFER    = 0x88EB, //!< The buffer will be used for reading from OpenGL textures
-        PIXEL_UNPACK_BUFFER  = 0x88EC  //!< The buffer will be used for writing to OpenGL textures
-    };
 
     enum Access
     {
@@ -110,7 +111,7 @@ public:
     @param abufId Buffer object name.
     @param autoRelease Auto release mode (if true, release will be called in object's destructor).
     */
-    Buffer(int arows, int acols, int atype, unsigned int abufId, bool autoRelease = false);
+    CV_WRAP Buffer(int arows, int acols, int atype, unsigned abufId, bool autoRelease = false);
 
     /** @overload
     @param asize 2D array size.
@@ -118,7 +119,7 @@ public:
     @param abufId Buffer object name.
     @param autoRelease Auto release mode (if true, release will be called in object's destructor).
     */
-    Buffer(Size asize, int atype, unsigned int abufId, bool autoRelease = false);
+    CV_WRAP Buffer(Size asize, int atype, unsigned abufId, bool autoRelease = false);
 
     /** @overload
     @param arows Number of rows in a 2D array.
@@ -127,7 +128,7 @@ public:
     @param target Buffer usage. See cv::ogl::Buffer::Target .
     @param autoRelease Auto release mode (if true, release will be called in object's destructor).
     */
-    Buffer(int arows, int acols, int atype, Target target = ARRAY_BUFFER, bool autoRelease = false);
+    CV_WRAP Buffer(int arows, int acols, int atype, Target target = ARRAY_BUFFER, bool autoRelease = false);
 
     /** @overload
     @param asize 2D array size.
@@ -135,14 +136,14 @@ public:
     @param target Buffer usage. See cv::ogl::Buffer::Target .
     @param autoRelease Auto release mode (if true, release will be called in object's destructor).
     */
-    Buffer(Size asize, int atype, Target target = ARRAY_BUFFER, bool autoRelease = false);
+    CV_WRAP  Buffer(Size asize, int atype, Target target = ARRAY_BUFFER, bool autoRelease = false);
 
     /** @overload
     @param arr Input array (host or device memory, it can be Mat , cuda::GpuMat or std::vector ).
     @param target Buffer usage. See cv::ogl::Buffer::Target .
     @param autoRelease Auto release mode (if true, release will be called in object's destructor).
     */
-    explicit Buffer(InputArray arr, Target target = ARRAY_BUFFER, bool autoRelease = false);
+    CV_WRAP explicit Buffer(InputArray arr, Target target = ARRAY_BUFFER, bool autoRelease = false);
 
     /** @brief Allocates memory for ogl::Buffer object.
 

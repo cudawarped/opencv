@@ -1012,9 +1012,9 @@ cv::ogl::Texture2D::Texture2D(InputArray arr, bool autoRelease) : rows_(0), cols
     case _InputArray::OPENGL_BUFFER:
         {
             ogl::Buffer buf = arr.getOGlBuffer();
-            buf.bind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+            buf.bind(ogl::PIXEL_UNPACK_BUFFER);
             impl_.reset(new Impl(internalFormats[cn], asize.width, asize.height, srcFormats[cn], gl_types[depth], 0, autoRelease));
-            ogl::Buffer::unbind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+            ogl::Buffer::unbind(ogl::PIXEL_UNPACK_BUFFER);
             break;
         }
 
@@ -1024,11 +1024,11 @@ cv::ogl::Texture2D::Texture2D(InputArray arr, bool autoRelease) : rows_(0), cols
                 throw_no_cuda();
             #else
                 GpuMat dmat = arr.getGpuMat();
-                ogl::Buffer buf(dmat, ogl::Buffer::PIXEL_UNPACK_BUFFER);
+                ogl::Buffer buf(dmat, ogl::PIXEL_UNPACK_BUFFER);
                 buf.setAutoRelease(true);
-                buf.bind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+                buf.bind(ogl::PIXEL_UNPACK_BUFFER);
                 impl_.reset(new Impl(internalFormats[cn], asize.width, asize.height, srcFormats[cn], gl_types[depth], 0, autoRelease));
-                ogl::Buffer::unbind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+                ogl::Buffer::unbind(ogl::PIXEL_UNPACK_BUFFER);
             #endif
 
             break;
@@ -1038,7 +1038,7 @@ cv::ogl::Texture2D::Texture2D(InputArray arr, bool autoRelease) : rows_(0), cols
         {
             Mat mat = arr.getMat();
             CV_Assert( mat.isContinuous() );
-            ogl::Buffer::unbind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+            ogl::Buffer::unbind(ogl::PIXEL_UNPACK_BUFFER);
             impl_.reset(new Impl(internalFormats[cn], asize.width, asize.height, srcFormats[cn], gl_types[depth], mat.data, autoRelease));
             break;
         }
@@ -1061,7 +1061,7 @@ void cv::ogl::Texture2D::create(int arows, int acols, Format aformat, bool autoR
 #else
     if (rows_ != arows || cols_ != acols || format_ != aformat)
     {
-        ogl::Buffer::unbind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+        ogl::Buffer::unbind(ogl::PIXEL_UNPACK_BUFFER);
         impl_.reset(new Impl(aformat, acols, arows, aformat, gl::FLOAT, 0, autoRelease));
         rows_ = arows;
         cols_ = acols;
@@ -1126,9 +1126,9 @@ void cv::ogl::Texture2D::copyFrom(InputArray arr, bool autoRelease)
     case _InputArray::OPENGL_BUFFER:
         {
             ogl::Buffer buf = arr.getOGlBuffer();
-            buf.bind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+            buf.bind(ogl::PIXEL_UNPACK_BUFFER);
             impl_->copyFrom(asize.width, asize.height, srcFormats[cn], gl_types[depth], 0);
-            ogl::Buffer::unbind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+            ogl::Buffer::unbind(ogl::PIXEL_UNPACK_BUFFER);
             break;
         }
 
@@ -1138,11 +1138,11 @@ void cv::ogl::Texture2D::copyFrom(InputArray arr, bool autoRelease)
                 throw_no_cuda();
             #else
                 GpuMat dmat = arr.getGpuMat();
-                ogl::Buffer buf(dmat, ogl::Buffer::PIXEL_UNPACK_BUFFER);
+                ogl::Buffer buf(dmat, ogl::PIXEL_UNPACK_BUFFER);
                 buf.setAutoRelease(true);
-                buf.bind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+                buf.bind(ogl::PIXEL_UNPACK_BUFFER);
                 impl_->copyFrom(asize.width, asize.height, srcFormats[cn], gl_types[depth], 0);
-                ogl::Buffer::unbind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+                ogl::Buffer::unbind(ogl::PIXEL_UNPACK_BUFFER);
             #endif
 
             break;
@@ -1152,7 +1152,7 @@ void cv::ogl::Texture2D::copyFrom(InputArray arr, bool autoRelease)
         {
             Mat mat = arr.getMat();
             CV_Assert( mat.isContinuous() );
-            ogl::Buffer::unbind(ogl::Buffer::PIXEL_UNPACK_BUFFER);
+            ogl::Buffer::unbind(ogl::PIXEL_UNPACK_BUFFER);
             impl_->copyFrom(asize.width, asize.height, srcFormats[cn], gl_types[depth], mat.data);
         }
     }
@@ -1177,10 +1177,10 @@ void cv::ogl::Texture2D::copyTo(OutputArray arr, int ddepth, bool autoRelease) c
     case _InputArray::OPENGL_BUFFER:
         {
             ogl::Buffer& buf = arr.getOGlBufferRef();
-            buf.create(rows_, cols_, CV_MAKE_TYPE(ddepth, cn), ogl::Buffer::PIXEL_PACK_BUFFER, autoRelease);
-            buf.bind(ogl::Buffer::PIXEL_PACK_BUFFER);
+            buf.create(rows_, cols_, CV_MAKE_TYPE(ddepth, cn), ogl::PIXEL_PACK_BUFFER, autoRelease);
+            buf.bind(ogl::PIXEL_PACK_BUFFER);
             impl_->copyTo(dstFormat, gl_types[ddepth], 0);
-            ogl::Buffer::unbind(ogl::Buffer::PIXEL_PACK_BUFFER);
+            ogl::Buffer::unbind(ogl::PIXEL_PACK_BUFFER);
             break;
         }
 
@@ -1189,11 +1189,11 @@ void cv::ogl::Texture2D::copyTo(OutputArray arr, int ddepth, bool autoRelease) c
             #ifndef HAVE_CUDA
                 throw_no_cuda();
             #else
-                ogl::Buffer buf(rows_, cols_, CV_MAKE_TYPE(ddepth, cn), ogl::Buffer::PIXEL_PACK_BUFFER);
+                ogl::Buffer buf(rows_, cols_, CV_MAKE_TYPE(ddepth, cn), ogl::PIXEL_PACK_BUFFER);
                 buf.setAutoRelease(true);
-                buf.bind(ogl::Buffer::PIXEL_PACK_BUFFER);
+                buf.bind(ogl::PIXEL_PACK_BUFFER);
                 impl_->copyTo(dstFormat, gl_types[ddepth], 0);
-                ogl::Buffer::unbind(ogl::Buffer::PIXEL_PACK_BUFFER);
+                ogl::Buffer::unbind(ogl::PIXEL_PACK_BUFFER);
                 buf.copyTo(arr);
             #endif
 
@@ -1205,7 +1205,7 @@ void cv::ogl::Texture2D::copyTo(OutputArray arr, int ddepth, bool autoRelease) c
             arr.create(rows_, cols_, CV_MAKE_TYPE(ddepth, cn));
             Mat mat = arr.getMat();
             CV_Assert( mat.isContinuous() );
-            ogl::Buffer::unbind(ogl::Buffer::PIXEL_PACK_BUFFER);
+            ogl::Buffer::unbind(ogl::PIXEL_PACK_BUFFER);
             impl_->copyTo(dstFormat, gl_types[ddepth], mat.data);
         }
     }
@@ -1351,7 +1351,7 @@ void cv::ogl::Arrays::bind() const
         gl::EnableClientState(gl::TEXTURE_COORD_ARRAY);
         CV_CheckGlError();
 
-        texCoord_.bind(ogl::Buffer::ARRAY_BUFFER);
+        texCoord_.bind(ogl::ARRAY_BUFFER);
 
         gl::TexCoordPointer(texCoord_.channels(), gl_types[texCoord_.depth()], 0, 0);
         CV_CheckGlError();
@@ -1367,7 +1367,7 @@ void cv::ogl::Arrays::bind() const
         gl::EnableClientState(gl::NORMAL_ARRAY);
         CV_CheckGlError();
 
-        normal_.bind(ogl::Buffer::ARRAY_BUFFER);
+        normal_.bind(ogl::ARRAY_BUFFER);
 
         gl::NormalPointer(gl_types[normal_.depth()], 0, 0);
         CV_CheckGlError();
@@ -1383,7 +1383,7 @@ void cv::ogl::Arrays::bind() const
         gl::EnableClientState(gl::COLOR_ARRAY);
         CV_CheckGlError();
 
-        color_.bind(ogl::Buffer::ARRAY_BUFFER);
+        color_.bind(ogl::ARRAY_BUFFER);
 
         const int cn = color_.channels();
 
@@ -1401,13 +1401,13 @@ void cv::ogl::Arrays::bind() const
         gl::EnableClientState(gl::VERTEX_ARRAY);
         CV_CheckGlError();
 
-        vertex_.bind(ogl::Buffer::ARRAY_BUFFER);
+        vertex_.bind(ogl::ARRAY_BUFFER);
 
         gl::VertexPointer(vertex_.channels(), gl_types[vertex_.depth()], 0, 0);
         CV_CheckGlError();
     }
 
-    ogl::Buffer::unbind(ogl::Buffer::ARRAY_BUFFER);
+    ogl::Buffer::unbind(ogl::ARRAY_BUFFER);
 #endif
 }
 
@@ -1462,7 +1462,7 @@ void cv::ogl::render(const ogl::Texture2D& tex, Rect_<double> wndRect, Rect_<dou
             texRect.x + texRect.width, texRect.y
         };
 
-        ogl::Buffer::unbind(ogl::Buffer::ARRAY_BUFFER);
+        ogl::Buffer::unbind(ogl::ARRAY_BUFFER);
 
         gl::EnableClientState(gl::TEXTURE_COORD_ARRAY);
         CV_CheckGlError();
@@ -1541,11 +1541,11 @@ void cv::ogl::render(const ogl::Arrays& arr, InputArray indices, int mode, Scala
                 else
                     type = gl::UNSIGNED_INT;
 
-                buf.bind(ogl::Buffer::ELEMENT_ARRAY_BUFFER);
+                buf.bind(ogl::ELEMENT_ARRAY_BUFFER);
 
                 gl::DrawElements(mode, buf.size().area(), type, 0);
 
-                ogl::Buffer::unbind(ogl::Buffer::ELEMENT_ARRAY_BUFFER);
+                ogl::Buffer::unbind(ogl::ELEMENT_ARRAY_BUFFER);
 
                 break;
             }
@@ -1568,7 +1568,7 @@ void cv::ogl::render(const ogl::Arrays& arr, InputArray indices, int mode, Scala
                 else
                     type = gl::UNSIGNED_INT;
 
-                ogl::Buffer::unbind(ogl::Buffer::ELEMENT_ARRAY_BUFFER);
+                ogl::Buffer::unbind(ogl::ELEMENT_ARRAY_BUFFER);
 
                 gl::DrawElements(mode, mat.size().area(), type, mat.data);
             }
